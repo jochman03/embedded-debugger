@@ -1,0 +1,108 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 25,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "Firmware",
+            "hidden": true,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
+            "cacheVariables": {
+                "BUILD_FIRMWARE": "ON",
+                "BUILD_TESTING": "OFF"
+            }
+        },
+        {
+            "name": "Debug",
+            "inherits": "Firmware",
+            "displayName": "Firmware Debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "DEBUGGER_ENABLE_LOGGING": "ON"
+            }
+        },
+        {
+            "name": "Release",
+            "inherits": "Firmware",
+            "displayName": "Firmware Release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "DEBUGGER_ENABLE_LOGGING": "OFF"
+            }
+        },
+        {
+            "name": "Test",
+            "displayName": "Host Unit Tests",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/Test",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BUILD_FIRMWARE": "OFF",
+                "BUILD_TESTING": "ON",
+                "DEBUGGER_ENABLE_LOGGING": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "Debug",
+            "configurePreset": "Debug"
+        },
+        {
+            "name": "Release",
+            "configurePreset": "Release"
+        },
+        {
+            "name": "Test",
+            "configurePreset": "Test"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "Test",
+            "configurePreset": "Test",
+            "output": {
+                "outputOnFailure": true
+            }
+        }
+    ],
+    "workflowPresets": [
+        {
+            "name": "Build",
+            "displayName": "Build Firmware Debug",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "Debug"
+                },
+                {
+                    "type": "build",
+                    "name": "Debug"
+                }
+            ]
+        },
+        {
+            "name": "Test",
+            "displayName": "Build and Run Tests",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "Test"
+                },
+                {
+                    "type": "build",
+                    "name": "Test"
+                },
+                {
+                    "type": "test",
+                    "name": "Test"
+                }
+            ]
+        }
+    ]
+}

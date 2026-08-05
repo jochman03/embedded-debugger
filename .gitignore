@@ -1,24 +1,59 @@
-# CMake
+# Build
 build/
 cmake-build-*/
+out/
+
 CMakeCache.txt
 CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+
+build.ninja
+.ninja_deps
+.ninja_log
+rules.ninja
+
 compile_commands.json
+CMakeUserPresets.json
+_deps/
+Testing/
 
-# Binaries
+# C / C++ artifacts
 *.o
+*.obj
+*.d
 *.a
+*.so
+*.so.*
 *.elf
-*.hex
-*.bin
+*.axf
 *.map
+*.lst
+*.list
 
-# Application data
+# STM32 tools
+.gdb_history
+openocd.log
+*.launch
+.mxproject
+
+# Runtime data
 recordings/
+logs/
+*.log
 
-# IDE
+# Crash dumps
+core
+core.*
+vgcore.*
+
+# VS Code
 .vscode/
-.idea/
 
-# OS
-.DS_Store
+# Temporary files
+*.swp
+*.swo
+*~
+.cache/
+.clangd/

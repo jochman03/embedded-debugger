@@ -1,0 +1,11 @@
+source [find interface/cmsis-dap.cfg]
+
+cmsis_dap_vid_pid 0xc251 0xf001
+cmsis_dap_backend auto
+
+transport select swd
+adapter speed 2000
+
+source [find target/stm32f4x.cfg]
+
+reset_config none
