@@ -16,8 +16,11 @@ rules.ninja
 
 compile_commands.json
 CMakeUserPresets.json
-_deps/
 Testing/
+
+# FetchContent
+**/.deps/
+_deps/
 
 # C / C++ artifacts
 *.o

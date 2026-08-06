@@ -1,26 +1,23 @@
-cmake_minimum_required(VERSION 3.20)
-
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-project(serial_monitor LANGUAGES CXX)
-
 find_package(glfw3 REQUIRED)
 find_package(OpenGL REQUIRED)
 
 include(FetchContent)
 
+set(FETCHCONTENT_QUIET OFF)
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
+
 FetchContent_Declare(
     imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
     GIT_TAG docking
+    GIT_PROGRESS TRUE
 )
 
 FetchContent_Declare(
     implot
     GIT_REPOSITORY https://github.com/epezent/implot.git
     GIT_TAG master
+    GIT_PROGRESS TRUE
 )
 
 FetchContent_MakeAvailable(imgui implot)
@@ -28,24 +25,14 @@ FetchContent_MakeAvailable(imgui implot)
 set(IMGUI_DIR ${imgui_SOURCE_DIR})
 set(IMPLOT_DIR ${implot_SOURCE_DIR})
 
-add_executable(serial_monitor
+add_executable(debugger_gui
     src/main.cpp
     src/application.cpp
-    src/serial_scan.cpp
-    src/serial_port.cpp
-    src/log_entry.cpp
     src/plot_manager.cpp
-
     src/terminal.cpp
-
-    src/protocol_parser.cpp
-    src/protocol_command.cpp
-    src/protocol.cpp
     src/recording.cpp
-
     src/session.cpp
     src/session_manager.cpp
-
 
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_draw.cpp
@@ -54,20 +41,25 @@ add_executable(serial_monitor
 
     ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
     ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+
     ${IMPLOT_DIR}/implot.cpp
     ${IMPLOT_DIR}/implot_items.cpp
 )
 
-target_include_directories(serial_monitor PRIVATE
-    ${CMAKE_SOURCE_DIR}/inc
+target_include_directories(debugger_gui PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/inc
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
     ${IMPLOT_DIR}
 )
 
-target_link_libraries(serial_monitor PRIVATE glfw OpenGL::GL)
+target_link_libraries(debugger_gui PRIVATE
+    debugger_core
+    glfw
+    OpenGL::GL
+)
 
-target_compile_options(serial_monitor PRIVATE
+target_compile_options(debugger_gui PRIVATE
     -Wall
     -Wextra
     -Wpedantic
