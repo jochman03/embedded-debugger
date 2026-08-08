@@ -127,6 +127,43 @@ static void test_log(void) {
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, test_buffer, sizeof(expected));
 }
 
+static void test_parse_command(void) {
+    const char payload[] = "SET_LED 5";
+    const uint8_t payload_length = sizeof(payload) - 1;
+
+    uint8_t frame[] = {DEBUGGER_SYNC_BYTE_1,
+                       DEBUGGER_SYNC_BYTE_2,
+                       2,
+                       payload_length,
+
+                       'S',
+                       'E',
+                       'T',
+                       '_',
+                       'L',
+                       'E',
+                       'D',
+                       ' ',
+                       '5',
+
+                       0};
+
+    frame[sizeof(frame) - 1] = debugger_crc8(&frame[2], payload_length + 2);
+
+    debugger_process_data(frame, sizeof(frame));
+
+    debugger_command_t command = {0};
+
+    TEST_ASSERT_TRUE(debugger_get_command(&command));
+
+    TEST_ASSERT_EQUAL_UINT8(2, command.command_type);
+    TEST_ASSERT_EQUAL_UINT8(2, command.argc);
+
+    TEST_ASSERT_EQUAL_STRING("SET_LED", (const char*)command.payload);
+
+    TEST_ASSERT_EQUAL_STRING("5", (const char*)&command.payload[8]);
+}
+
 int main(void) {
     UNITY_BEGIN();
 
@@ -135,6 +172,7 @@ int main(void) {
     RUN_TEST(test_valid_init);
     RUN_TEST(test_register_signal);
     RUN_TEST(test_plot_uint8);
+    RUN_TEST(test_parse_command);
 
     return UNITY_END();
 }

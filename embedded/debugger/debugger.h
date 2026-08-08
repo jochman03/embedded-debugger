@@ -46,7 +46,8 @@ typedef enum debugger_signal_type {
 typedef struct debugger_command_t {
     uint8_t command_type;
     uint8_t length;
-    uint8_t payload[DEBUGGER_MAX_COMMAND_PAYLOAD];
+    uint8_t payload[DEBUGGER_MAX_COMMAND_PAYLOAD + 1];
+    uint8_t argc;
 } debugger_command_t;
 
 typedef struct {
@@ -121,6 +122,10 @@ void debugger_plot_signal_float(const uint8_t signal_id, const float value);
 
 void debugger_process_data(const uint8_t* data, size_t length);
 bool debugger_get_command(debugger_command_t* command);
+
+const char* debugger_get_command_arg(debugger_command_t* command, uint8_t index);
+
+uint8_t debugger_crc8(const uint8_t* data, size_t length);
 
 #else
 

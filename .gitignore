@@ -1,5 +1,7 @@
 # Build
 build/
+linux/build*/
+embedded/build*
 cmake-build-*/
 out/
 

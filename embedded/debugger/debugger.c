@@ -25,7 +25,7 @@ static debugger_command_t command_queue[DEBUGGER_COMMAND_QUEUE_SIZE];
 static volatile uint8_t command_queue_head;
 static volatile uint8_t command_queue_tail;
 
-static uint8_t crc8(const uint8_t* data, size_t length) {
+uint8_t debugger_crc8(const uint8_t* data, size_t length) {
     uint8_t crc = 0;
 
     for (size_t i = 0; i < length; i++) {
@@ -64,7 +64,7 @@ static void plot_signal(const uint8_t signal_id, const void* value, const size_t
     index += size;
 
     const size_t crc_length = index - 2U;
-    const uint8_t crc = crc8(&frame[2], crc_length);
+    const uint8_t crc = debugger_crc8(&frame[2], crc_length);
     frame[index] = crc;
     index++;
 
@@ -110,7 +110,7 @@ static void debugger_log(const char* prefix, const char* tag, const char* messag
     index += message_length;
 
     const size_t crc_length = index - 2U;
-    const uint8_t crc = crc8(&frame[2], crc_length);
+    const uint8_t crc = debugger_crc8(&frame[2], crc_length);
     frame[index] = crc;
     index++;
 
@@ -191,7 +191,7 @@ void debugger_register_signal(const uint8_t signal_id, const debugger_signal_typ
     index += name_length;
 
     const size_t crc_length = index - 2U;
-    const uint8_t crc = crc8(&frame[2], crc_length);
+    const uint8_t crc = debugger_crc8(&frame[2], crc_length);
     frame[index] = crc;
     index++;
 
@@ -289,11 +289,20 @@ void debugger_process_data(const uint8_t* data, size_t length) {
                 break;
             case DEBUGGER_PARSER_CRC:
                 uint8_t expected_crc =
-                    crc8(&parser_command.command_type, parser_command.length + 2);
+                    debugger_crc8(&parser_command.command_type, parser_command.length + 2);
 
                 if (expected_crc == byte) {
                     const uint8_t next_head =
                         (uint8_t)((command_queue_head + 1U) % DEBUGGER_COMMAND_QUEUE_SIZE);
+
+                    parser_command.argc = (parser_command.length > 0) ? 1 : 0;
+                    for (size_t j = 0; j < parser_command.length; ++j) {
+                        if (parser_command.payload[j] == ' ') {
+                            parser_command.payload[j] = '\0';
+                            parser_command.argc++;
+                        }
+                    }
+                    parser_command.payload[parser_command.length] = '\0';
 
                     if (next_head != command_queue_tail) {
                         command_queue[command_queue_head] = parser_command;
@@ -319,6 +328,22 @@ bool debugger_get_command(debugger_command_t* command) {
     *command = command_queue[command_queue_tail];
     command_queue_tail = (uint8_t)((command_queue_tail + 1) % DEBUGGER_COMMAND_QUEUE_SIZE);
     return true;
+}
+
+const char* debugger_get_command_arg(debugger_command_t* command, uint8_t index) {
+    if (command == NULL || index > command->argc) {
+        return NULL;
+    }
+
+    size_t position = 0;
+    for (uint8_t i = 0; i < index; ++i) {
+        while (command->payload[position] != '\0') {
+            position++;
+        }
+        position++;
+    }
+
+    return (const char*)&command->payload[position];
 }
 
 #endif

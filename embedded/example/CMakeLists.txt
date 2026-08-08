@@ -46,18 +46,18 @@ if(BUILD_FIRMWARE)
         "${CMAKE_CURRENT_SOURCE_DIR}/App/Src/*.c"
     )
 
-    file(GLOB BSP_SOURCES CONFIGURE_DEPENDS
-        "${CMAKE_CURRENT_SOURCE_DIR}/BSP/Src/*.c"
+    file(GLOB PLATFORM_SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/Platform/Src/*.c"
     )
     
     target_sources(${PROJECT_NAME} PRIVATE
         ${APP_SOURCES}
-        ${BSP_SOURCES}
+        ${PLATFORM_SOURCES}
     )
 
     target_include_directories(${PROJECT_NAME} PRIVATE
         App/Inc
-        BSP/Inc
+        Platform/Inc
     )
 
     target_link_libraries(${PROJECT_NAME}
