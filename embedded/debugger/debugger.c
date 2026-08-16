@@ -1,13 +1,14 @@
 #include <stddef.h>
-#include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
 
 #include "debugger.h"
-#include "debugger.h"
+
+#if DEBUGGER_ENABLED
 
 static debugger_interface_t debugger_interface;
 static bool debugger_initialized = false;
+
+static uint8_t signal_sizes[UINT8_MAX + 1U];
 
 typedef enum debugger_parser_state {
     DEBUGGER_PARSER_SYNC_1,
@@ -25,17 +26,34 @@ static debugger_command_t command_queue[DEBUGGER_COMMAND_QUEUE_SIZE];
 static volatile uint8_t command_queue_head;
 static volatile uint8_t command_queue_tail;
 
+static uint8_t signal_type_to_size(debugger_signal_type signal_type) {
+    switch (signal_type) {
+        case DEBUGGER_SIGNAL_TYPE_UINT8:
+        case DEBUGGER_SIGNAL_TYPE_INT8:
+            return 1U;
+        case DEBUGGER_SIGNAL_TYPE_UINT16:
+        case DEBUGGER_SIGNAL_TYPE_INT16:
+            return 2U;
+        case DEBUGGER_SIGNAL_TYPE_UINT32:
+        case DEBUGGER_SIGNAL_TYPE_INT32:
+        case DEBUGGER_SIGNAL_TYPE_FLOAT:
+            return 4U;
+        default:
+            return 0U;
+    }
+}
+
 uint8_t debugger_crc8(const uint8_t* data, size_t length) {
-    uint8_t crc = 0;
+    uint8_t crc = 0U;
 
     for (size_t i = 0; i < length; i++) {
         crc ^= data[i];
 
-        for (uint8_t bit = 0; bit < 8; bit++) {
+        for (uint8_t bit = 0U; bit < 8U; bit++) {
             if ((crc & 0x80) != 0) {
-                crc = (uint8_t)((crc << 1) ^ 0x07);
+                crc = (uint8_t)((crc << 1U) ^ 0x07);
             } else {
-                crc = (uint8_t)(crc << 1);
+                crc = (uint8_t)(crc << 1U);
             }
         }
     }
@@ -43,12 +61,17 @@ uint8_t debugger_crc8(const uint8_t* data, size_t length) {
     return crc;
 }
 
-static void plot_signal(const uint8_t signal_id, const void* value, const size_t size) {
-    if ((value == NULL) || (size == 0U) || (size > sizeof(uint32_t))) {
+void debugger_plot_signal(uint8_t signal_id, const void* value) {
+    if (!debugger_initialized || value == NULL) {
         return;
     }
+    const uint8_t size = signal_sizes[signal_id];
+    if (size == 0U) {
+        return;
+    }
+
     uint8_t frame[DEBUGGER_MAX_PLOT_FRAME_LENGTH];
-    size_t index = 0;
+    size_t index = 0U;
     const uint32_t timestamp = debugger_interface.get_timestamp_ms();
 
     frame[index++] = DEBUGGER_SYNC_BYTE_1;
@@ -64,7 +87,7 @@ static void plot_signal(const uint8_t signal_id, const void* value, const size_t
     index += size;
 
     const size_t crc_length = index - 2U;
-    const uint8_t crc = debugger_crc8(&frame[2], crc_length);
+    const uint8_t crc = debugger_crc8(&frame[2U], crc_length);
     frame[index] = crc;
     index++;
 
@@ -86,7 +109,7 @@ static void debugger_log(const char* prefix, const char* tag, const char* messag
     }
 
     uint8_t frame[DEBUGGER_MAX_LOG_FRAME_LENGTH];
-    size_t index = 0;
+    size_t index = 0U;
     const uint32_t timestamp = debugger_interface.get_timestamp_ms();
 
     frame[index++] = DEBUGGER_SYNC_BYTE_1;
@@ -119,7 +142,7 @@ static void debugger_log(const char* prefix, const char* tag, const char* messag
 
 static void debugger_parser_reset(void) {
     parser_state = DEBUGGER_PARSER_SYNC_1;
-    parser_payload_index = 0;
+    parser_payload_index = 0U;
 }
 
 bool debugger_init(const debugger_interface_t* interface) {
@@ -130,10 +153,10 @@ bool debugger_init(const debugger_interface_t* interface) {
 
     debugger_interface = *interface;
     debugger_initialized = true;
+    memset(signal_sizes, 0U, sizeof(signal_sizes));
+
     return true;
 }
-
-#if DEBUGGER_LOGGING_ENABLED
 
 void debugger_log_error(const char* tag, const char* error) {
     if (!debugger_initialized || debugger_interface.transmit_data == NULL || tag == NULL ||
@@ -166,18 +189,24 @@ void debugger_log_reset(const char* tag, const char* reason) {
     debugger_log("[RESET]", tag, reason);
 }
 
-void debugger_register_signal(const uint8_t signal_id, const debugger_signal_type signal_type,
+void debugger_register_signal(uint8_t signal_id, debugger_signal_type signal_type,
                               const char* signal_name) {
-    if (signal_name == NULL) {
+    if (signal_name == NULL || !debugger_initialized) {
         return;
     }
-    size_t name_length = strlen(signal_name);
+    const uint8_t size = signal_type_to_size(signal_type);
+    if (size == 0U) {
+        return;
+    }
+
+    const size_t name_length = strlen(signal_name);
     if (name_length > DEBUGGER_MAX_SIGNAL_NAME_LENGTH) {
         return;
     }
 
+    signal_sizes[signal_id] = size;
     uint8_t frame[DEBUGGER_MAX_REGISTER_FRAME_LENGTH];
-    size_t index = 0;
+    size_t index = 0U;
 
     frame[index++] = DEBUGGER_SYNC_BYTE_1;
     frame[index++] = DEBUGGER_SYNC_BYTE_2;
@@ -191,112 +220,68 @@ void debugger_register_signal(const uint8_t signal_id, const debugger_signal_typ
     index += name_length;
 
     const size_t crc_length = index - 2U;
-    const uint8_t crc = debugger_crc8(&frame[2], crc_length);
+    const uint8_t crc = debugger_crc8(&frame[2U], crc_length);
     frame[index] = crc;
     index++;
 
     debugger_interface.transmit_data(frame, index);
 }
 
-void debugger_plot_signal_uint8(const uint8_t signal_id, const uint8_t value) {
-    if (!debugger_initialized || debugger_interface.transmit_data == NULL) {
-        return;
-    }
-    plot_signal(signal_id, &value, 1);
-}
-
-void debugger_plot_signal_uint16(const uint8_t signal_id, const uint16_t value) {
-    if (!debugger_initialized || debugger_interface.transmit_data == NULL) {
-        return;
-    }
-    plot_signal(signal_id, &value, 2);
-}
-
-void debugger_plot_signal_uint32(const uint8_t signal_id, const uint32_t value) {
-    if (!debugger_initialized || debugger_interface.transmit_data == NULL) {
-        return;
-    }
-    plot_signal(signal_id, &value, 4);
-}
-
-void debugger_plot_signal_int8(const uint8_t signal_id, const int8_t value) {
-    if (!debugger_initialized || debugger_interface.transmit_data == NULL) {
-        return;
-    }
-    plot_signal(signal_id, &value, 1);
-}
-
-void debugger_plot_signal_int16(const uint8_t signal_id, const int16_t value) {
-    if (!debugger_initialized || debugger_interface.transmit_data == NULL) {
-        return;
-    }
-    plot_signal(signal_id, &value, 2);
-}
-
-void debugger_plot_signal_int32(const uint8_t signal_id, const int32_t value) {
-    if (!debugger_initialized || debugger_interface.transmit_data == NULL) {
-        return;
-    }
-    plot_signal(signal_id, &value, 4);
-}
-
-void debugger_plot_signal_float(const uint8_t signal_id, const float value) {
-    if (!debugger_initialized || debugger_interface.transmit_data == NULL) {
-        return;
-    }
-    plot_signal(signal_id, &value, 4);
-}
-
 void debugger_process_data(const uint8_t* data, size_t length) {
-    if ((data == NULL) || (length == 0)) {
+    if ((data == NULL) || (length == 0U)) {
         return;
     }
-    for (size_t i = 0; i < length; ++i) {
+    for (size_t i = 0U; i < length; ++i) {
         const uint8_t byte = data[i];
 
         switch (parser_state) {
-            case DEBUGGER_PARSER_SYNC_1:
+            case DEBUGGER_PARSER_SYNC_1: {
                 if (byte == DEBUGGER_SYNC_BYTE_1) {
                     parser_state = DEBUGGER_PARSER_SYNC_2;
                 }
                 break;
-            case DEBUGGER_PARSER_SYNC_2:
+            }
+            case DEBUGGER_PARSER_SYNC_2: {
                 if (byte == DEBUGGER_SYNC_BYTE_2) {
                     parser_state = DEBUGGER_PARSER_COMMAND;
                 } else if (byte != DEBUGGER_SYNC_BYTE_1) {
                     parser_state = DEBUGGER_PARSER_SYNC_1;
                 }
                 break;
-            case DEBUGGER_PARSER_COMMAND:
+            }
+            case DEBUGGER_PARSER_COMMAND: {
                 parser_command.command_type = byte;
                 parser_state = DEBUGGER_PARSER_LENGTH;
                 break;
-            case DEBUGGER_PARSER_LENGTH:
+            }
+            case DEBUGGER_PARSER_LENGTH: {
                 if (byte > DEBUGGER_MAX_COMMAND_PAYLOAD) {
                     debugger_parser_reset();
                     break;
                 }
                 parser_command.length = byte;
-                parser_payload_index = 0;
-                parser_state = (byte == 0) ? DEBUGGER_PARSER_CRC : DEBUGGER_PARSER_PAYLOAD;
+                parser_payload_index = 0U;
+                parser_state = (byte == 0U) ? DEBUGGER_PARSER_CRC : DEBUGGER_PARSER_PAYLOAD;
                 break;
-            case DEBUGGER_PARSER_PAYLOAD:
+            }
+            case DEBUGGER_PARSER_PAYLOAD: {
                 parser_command.payload[parser_payload_index] = byte;
                 parser_payload_index++;
                 if (parser_payload_index >= parser_command.length) {
                     parser_state = DEBUGGER_PARSER_CRC;
                 }
                 break;
-            case DEBUGGER_PARSER_CRC:
-                uint8_t expected_crc =
+            }
+            case DEBUGGER_PARSER_CRC: {
+                const uint8_t expected_crc =
                     debugger_crc8(&parser_command.command_type, parser_command.length + 2);
 
                 if (expected_crc == byte) {
                     const uint8_t next_head =
                         (uint8_t)((command_queue_head + 1U) % DEBUGGER_COMMAND_QUEUE_SIZE);
 
-                    parser_command.argc = (parser_command.length > 0) ? 1 : 0;
-                    for (size_t j = 0; j < parser_command.length; ++j) {
+                    parser_command.argc = (parser_command.length > 0U) ? 1U : 0U;
+                    for (size_t j = 0U; j < parser_command.length; ++j) {
                         if (parser_command.payload[j] == ' ') {
                             parser_command.payload[j] = '\0';
                             parser_command.argc++;
@@ -312,6 +297,7 @@ void debugger_process_data(const uint8_t* data, size_t length) {
                 }
                 debugger_parser_reset();
                 break;
+            }
             default:
                 continue;
         }
@@ -326,17 +312,17 @@ bool debugger_get_command(debugger_command_t* command) {
         return false;
     }
     *command = command_queue[command_queue_tail];
-    command_queue_tail = (uint8_t)((command_queue_tail + 1) % DEBUGGER_COMMAND_QUEUE_SIZE);
+    command_queue_tail = (uint8_t)((command_queue_tail + 1U) % DEBUGGER_COMMAND_QUEUE_SIZE);
     return true;
 }
 
-const char* debugger_get_command_arg(debugger_command_t* command, uint8_t index) {
-    if (command == NULL || index > command->argc) {
+const char* debugger_get_command_arg(const debugger_command_t* command, uint8_t index) {
+    if (command == NULL || index >= command->argc) {
         return NULL;
     }
 
-    size_t position = 0;
-    for (uint8_t i = 0; i < index; ++i) {
+    size_t position = 0U;
+    for (uint8_t i = 0U; i < index; ++i) {
         while (command->payload[position] != '\0') {
             position++;
         }
@@ -346,4 +332,4 @@ const char* debugger_get_command_arg(debugger_command_t* command, uint8_t index)
     return (const char*)&command->payload[position];
 }
 
-#endif
+#endif /* DEBUGGER_ENABLED */

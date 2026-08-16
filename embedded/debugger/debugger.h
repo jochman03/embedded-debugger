@@ -55,18 +55,21 @@ typedef struct {
     uint32_t (*get_timestamp_ms)(void);
 } debugger_interface_t;
 
+#ifndef DEBUGGER_ENABLED
+#define DEBUGGER_ENABLED 1
+#endif
+
+#if DEBUGGER_ENABLED
+
 /**
  * @brief Initializes the debugger component.
  *
  * @param interface Pointer to the communication interface.
  * @return True if initialization succeeded, otherwise false.
+ *
+ * @note Available only when DEBUGGER_ENABLED is set to 1.
  */
 bool debugger_init(const debugger_interface_t* interface);
-
-#define DEBUGGER_LOGGING_ENABLED 1
-#define DEBUGGER_ENABLED         1
-
-#if DEBUGGER_ENABLED && DEBUGGER_LOGGING_ENABLED
 
 /**
  * @brief Logs an error message with a source tag.
@@ -74,7 +77,7 @@ bool debugger_init(const debugger_interface_t* interface);
  * @param tag Short text containing source file name
  * @param error Error message to send
  *
- * @note Available only when DEBUGGER_LOGGING_ENABLED is set to 1.
+ * @note Available only when DEBUGGER_ENABLED is set to 1.
  */
 void debugger_log_error(const char* tag, const char* error);
 
@@ -84,7 +87,7 @@ void debugger_log_error(const char* tag, const char* error);
  * @param tag Short text containing source file name
  * @param warning Warning message to send
  *
- * @note Available only when DEBUGGER_LOGGING_ENABLED is set to 1.
+ * @note Available only when DEBUGGER_ENABLED is set to 1.
  */
 void debugger_log_warning(const char* tag, const char* warning);
 
@@ -94,7 +97,7 @@ void debugger_log_warning(const char* tag, const char* warning);
  * @param tag Short text containing source file name
  * @param info Info message to send
  *
- * @note Available only when DEBUGGER_LOGGING_ENABLED is set to 1.
+ * @note Available only when DEBUGGER_ENABLED is set to 1.
  */
 void debugger_log_info(const char* tag, const char* info);
 
@@ -104,85 +107,96 @@ void debugger_log_info(const char* tag, const char* info);
  * @param tag Short text containing source file name
  * @param reason Short text containing potential reason
  *
- * @note Available only when DEBUGGER_LOGGING_ENABLED is set to 1.
+ * @note Available only when DEBUGGER_ENABLED is set to 1.
  */
 void debugger_log_reset(const char* tag, const char* reason);
 
-void debugger_register_signal(const uint8_t signal_id, const debugger_signal_type signal_type,
+/**
+ * @brief Registers a signal and sends its metadata to the host.
+ *
+ * The signal type determines the number of bytes read by
+ * debugger_plot_signal().
+ *
+ * @param signal_id Application-defined signal identifier.
+ * @param signal_type Type of the signal value.
+ * @param signal_name Human-readable signal name.
+ *
+ * @note Register the signal before sending its value.
+ * @note Available only when DEBUGGER_ENABLED is set to 1.
+ */
+void debugger_register_signal(uint8_t signal_id, debugger_signal_type signal_type,
                               const char* signal_name);
-void debugger_plot_signal_uint8(const uint8_t signal_id, const uint8_t value);
-void debugger_plot_signal_uint16(const uint8_t signal_id, const uint16_t value);
-void debugger_plot_signal_uint32(const uint8_t signal_id, const uint32_t value);
+/**
+ * @brief Sends the current value of a registered signal.
+ *
+ * @param signal_id Identifier previously passed to debugger_register_signal().
+ * @param value Pointer to the signal value.
+ *
+ * @note The pointed object must match the registered signal type.
+ * @note Available only when DEBUGGER_ENABLED is set to 1.
+ */
+void debugger_plot_signal(uint8_t signal_id, const void* value);
 
-void debugger_plot_signal_int8(const uint8_t signal_id, const int8_t value);
-void debugger_plot_signal_int16(const uint8_t signal_id, const int16_t value);
-void debugger_plot_signal_int32(const uint8_t signal_id, const int32_t value);
-
-void debugger_plot_signal_float(const uint8_t signal_id, const float value);
-
+/**
+ * @brief Processes data received from the debugger host.
+ *
+ * The function may be called with partial frames or multiple frames in one
+ * data block.
+ *
+ * @param data Pointer to the received bytes.
+ * @param length Number of received bytes.
+ *
+ * @note Available only when DEBUGGER_ENABLED is set to 1.
+ */
 void debugger_process_data(const uint8_t* data, size_t length);
+
+/**
+ * @brief Retrieves the oldest command from the command queue.
+ *
+ * @param command Destination for the retrieved command.
+ * @return True if a command was retrieved, otherwise false.
+ *
+ * @note Available only when DEBUGGER_ENABLED is set to 1.
+ */
 bool debugger_get_command(debugger_command_t* command);
 
-const char* debugger_get_command_arg(debugger_command_t* command, uint8_t index);
+/**
+ * @brief Returns an argument from a parsed command.
+ *
+ * @param command Pointer to the parsed command.
+ * @param index Zero-based argument index.
+ * @return Pointer to the argument string, or NULL if the index is invalid.
+ *
+ * @note The returned pointer remains valid while command remains valid.
+ * @note Available only when DEBUGGER_ENABLED is set to 1.
+ */
+const char* debugger_get_command_arg(const debugger_command_t* command, uint8_t index);
 
+/**
+ * @brief Calculates the crc-8 checksum of a data block.
+ *
+ * The calculation uses polynomial 0x07 and an initial value of zero.
+ *
+ * @param data Pointer to the input bytes.
+ * @param length Number of bytes to process.
+ * @return Calculated crc-8 checksum.
+ *
+ * @note Available only when DEBUGGER_ENABLED is set to 1.
+ */
 uint8_t debugger_crc8(const uint8_t* data, size_t length);
 
 #else
 
-/**
- * @brief Logs an error message with a source tag.
- *
- * @param tag Short text containing source file name
- * @param error Error message to send
- *
- * @note Available only when DEBUGGER_LOGGING_ENABLED is set to 1.
- */
-#define debugger_log_error(tag, error)     ((void)0)
+#define debugger_init(interface)                 (true)
+#define debugger_log_error(tag, error)           ((void)0)
+#define debugger_log_warning(tag, warning)       ((void)0)
+#define debugger_log_info(tag, info)             ((void)0)
+#define debugger_log_reset(tag, reason)          ((void)0)
+#define debugger_register_signal(id, type, name) ((void)0)
+#define debugger_plot_signal(id, value)          ((void)0)
+#define debugger_get_command(command)            (false)
+#define debugger_get_command_arg(command, index) (NULL)
 
-/**
- * @brief Logs an warning message with a source tag.
- *
- * @param tag Short text containing source file name
- * @param warning Warning message to send
- *
- * @note Available only when DEBUGGER_LOGGING_ENABLED is set to 1.
- */
-#define debugger_log_warning(tag, warning) ((void)0)
-
-/**
- * @brief Logs info message with a source tag.
- *
- * @param tag Short text containing source file name
- * @param info Info message to send
- *
- * @note Available only when DEBUGGER_LOGGING_ENABLED is set to 1.
- */
-#define debugger_log_info(tag, info)       ((void)0)
-
-/**
- * @brief Logs reset message with a optional reason.
- *
- * @param tag Short text containing source file name
- * @param reason Short text containing potential reason
- *
- * @note Available only when DEBUGGER_LOGGING_ENABLED is set to 1.
- */
-#define debugger_log_reset(tag, reason)    ((void)0)
-
-#define debugger_plot_uint8(signal_id, value) ((void)0)
-
-#define debugger_plot_uint16(signal_id, value) ((void)0)
-
-#define debugger_plot_uint32(signal_id, value) ((void)0)
-
-#define debugger_plot_int8(signal_id, value) ((void)0)
-
-#define debugger_plot_int16(signal_id, value) ((void)0)
-
-#define debugger_plot_int32(signal_id, value) ((void)0)
-
-#define debugger_plot_float(signal_id, value) ((void)0)
-
-#endif
+#endif /* DEBUGGER_ENABLED */
 
 #endif /* DEBUGGER_H */

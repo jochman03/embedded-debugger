@@ -23,7 +23,7 @@
             "displayName": "Firmware Debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "DEBUGGER_ENABLE_LOGGING": "ON"
+                "DEBUGGER_ENABLE": "ON"
             }
         },
         {
@@ -32,7 +32,7 @@
             "displayName": "Firmware Release",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "DEBUGGER_ENABLE_LOGGING": "OFF"
+                "DEBUGGER_ENABLE": "OFF"
             }
         },
         {
@@ -44,7 +44,7 @@
                 "CMAKE_BUILD_TYPE": "Debug",
                 "BUILD_FIRMWARE": "OFF",
                 "BUILD_TESTING": "ON",
-                "DEBUGGER_ENABLE_LOGGING": "ON"
+                "DEBUGGER_ENABLE": "ON"
             }
         }
     ],
