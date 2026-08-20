@@ -9,7 +9,7 @@
 #include <thread>
 #include <unistd.h>
 
-#include "log_entry.hpp"
+#include "log_type.hpp"
 #include "protocol_command.hpp"
 #include "protocol_parser.hpp"
 #include "serial_port.hpp"
@@ -38,7 +38,6 @@ void handle_command(char *line) {
 int main(int argc, char *argv[]) {
   static SerialPort serial;
   static ProtocolParser parser;
-  static std::vector<LogEntry> logs;
 
   while (running) {
     const std::vector<std::string> ports = scan_serial_ports();

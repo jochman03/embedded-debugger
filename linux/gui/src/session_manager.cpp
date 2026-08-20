@@ -1,4 +1,5 @@
 #include "session_manager.hpp"
+#include <algorithm>
 
 Session& SessionManager::start_session() {
     sessions_.emplace_back(next_session_id_);
@@ -17,28 +18,52 @@ Session* SessionManager::active_session() {
     if (active_session_id_ == 0) {
         return nullptr;
     }
-    return &sessions_[active_session_id_ - 1];
+    auto it = std::find_if(sessions_.begin(), sessions_.end(), [this](const Session& session) {
+        return session.id() == active_session_id_;
+    });
+    if (it == sessions_.end()) {
+        return nullptr;
+    }
+    return &(*it);
 }
 
 const Session* SessionManager::active_session() const {
     if (active_session_id_ == 0) {
         return nullptr;
     }
-    return &sessions_[active_session_id_ - 1];
+    auto it = std::find_if(sessions_.begin(), sessions_.end(), [this](const Session& session) {
+        return session.id() == active_session_id_;
+    });
+    if (it == sessions_.end()) {
+        return nullptr;
+    }
+    return &(*it);
 }
 
 Session* SessionManager::selected_session() {
     if (selected_session_id_ == 0) {
         return nullptr;
     }
-    return &sessions_[selected_session_id_ - 1];
+    auto it = std::find_if(sessions_.begin(), sessions_.end(), [this](const Session& session) {
+        return session.id() == selected_session_id_;
+    });
+    if (it == sessions_.end()) {
+        return nullptr;
+    }
+    return &(*it);
 }
 
 const Session* SessionManager::selected_session() const {
     if (selected_session_id_ == 0) {
         return nullptr;
     }
-    return &sessions_[selected_session_id_ - 1];
+    auto it = std::find_if(sessions_.begin(), sessions_.end(), [this](const Session& session) {
+        return session.id() == selected_session_id_;
+    });
+    if (it == sessions_.end()) {
+        return nullptr;
+    }
+    return &(*it);
 }
 
 std::uint32_t SessionManager::selected_session_id() {
@@ -50,34 +75,33 @@ std::uint32_t SessionManager::active_session_id() {
 }
 
 void SessionManager::select_session(std::uint32_t session_id) {
+    auto it =
+        std::find_if(sessions_.begin(), sessions_.end(),
+                     [session_id](const Session& session) { return session.id() == session_id; });
+    if (it == sessions_.end()) {
+        return;
+    }
     selected_session_id_ = session_id;
 }
 
 bool SessionManager::remove_session(std::uint32_t session_id) {
-    if (session_id == 0) {
+    if (session_id == 0 || session_id == active_session_id_) {
         return false;
     }
-    if (session_id == active_session_id_) {
-        return false;
-    }
-    std::size_t index_to_remove = sessions_.size();
 
-    for (std::size_t i = 0; i < sessions_.size(); ++i) {
-        if (sessions_[i].id() == session_id) {
-            index_to_remove = i;
-            break;
-        }
-    }
-    if (index_to_remove == sessions_.size()) {
+    auto it =
+        std::find_if(sessions_.begin(), sessions_.end(),
+                     [session_id](const Session& session) { return session.id() == session_id; });
+    if (it == sessions_.end()) {
         return false;
     }
-    sessions_.erase(sessions_.begin() + index_to_remove);
+    sessions_.erase(it);
 
     if (selected_session_id_ == session_id) {
         if (active_session_id_ != 0) {
-            session_id = active_session_id_;
-        } else if (selected_session_id_ == 0 && sessions_.size() != 0) {
-            selected_session_id_ = sessions_.size();
+            selected_session_id_ = active_session_id_;
+        } else if (!sessions_.empty()) {
+            selected_session_id_ = sessions_.back().id();
         } else {
             selected_session_id_ = 0;
         }
@@ -87,4 +111,18 @@ bool SessionManager::remove_session(std::uint32_t session_id) {
 
 const std::vector<Session>& SessionManager::sessions() const {
     return sessions_;
+}
+
+void to_json(nlohmann::json& j, const SessionManager& session_manager) {
+    j = json{{"sessions", session_manager.sessions_},
+             {"active_session_id", session_manager.active_session_id_},
+             {"selected_session_id", session_manager.selected_session_id_},
+             {"next_session_id", session_manager.next_session_id_}};
+}
+
+void from_json(const nlohmann::json& j, SessionManager& session_manager) {
+    session_manager.sessions_ = j.at("sessions").get<std::vector<Session>>();
+    session_manager.active_session_id_ = j.at("active_session_id").get<std::uint32_t>();
+    session_manager.selected_session_id_ = j.at("selected_session_id").get<std::uint32_t>();
+    session_manager.next_session_id_ = j.at("next_session_id").get<std::uint32_t>();
 }

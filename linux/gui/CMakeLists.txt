@@ -20,7 +20,15 @@ FetchContent_Declare(
     GIT_PROGRESS TRUE
 )
 
-FetchContent_MakeAvailable(imgui implot)
+FetchContent_Declare(
+    json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.12.0
+    GIT_SHALLOW TRUE
+    GIT_PROGRESS TRUE
+)
+
+FetchContent_MakeAvailable(json imgui implot)
 
 set(IMGUI_DIR ${imgui_SOURCE_DIR})
 set(IMPLOT_DIR ${implot_SOURCE_DIR})
@@ -28,11 +36,16 @@ set(IMPLOT_DIR ${implot_SOURCE_DIR})
 add_executable(debugger_gui
     src/main.cpp
     src/application.cpp
+    src/plot.cpp
     src/plot_manager.cpp
     src/terminal.cpp
     src/recording.cpp
     src/session.cpp
     src/session_manager.cpp
+    src/profile.cpp
+    src/profile_manager.cpp
+    src/log_entry.cpp
+
 
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_draw.cpp
@@ -57,6 +70,7 @@ target_link_libraries(debugger_gui PRIVATE
     debugger_core
     glfw
     OpenGL::GL
+    nlohmann_json::nlohmann_json
 )
 
 target_compile_options(debugger_gui PRIVATE

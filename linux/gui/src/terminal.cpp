@@ -2,10 +2,19 @@
 #include "log_entry.hpp"
 #include "imgui.h"
 
-void draw_terminal_panel(std::vector<LogEntry>& logs, bool terminal_updated) {
+void draw_terminal_panel(SessionManager* session_manager, bool terminal_updated) {
     ImGui::TextUnformatted("Terminal");
 
     ImGui::SameLine();
+
+    Session* selected_session = nullptr;
+    if (session_manager != nullptr) {
+        selected_session = session_manager->selected_session();
+    }
+
+    if (selected_session == nullptr) {
+        return;
+    }
 
     const float button_width =
         ImGui::CalcTextSize("Clear").x + ImGui::GetStyle().FramePadding.x * 2.0f;
@@ -14,7 +23,7 @@ void draw_terminal_panel(std::vector<LogEntry>& logs, bool terminal_updated) {
 
     ImGui::SetCursorPosX(button_x);
     if (ImGui::SmallButton("Clear")) {
-        logs.clear();
+        selected_session->logs().clear();
     }
 
     ImGui::Separator();
@@ -33,8 +42,8 @@ void draw_terminal_panel(std::vector<LogEntry>& logs, bool terminal_updated) {
         follow_terminal = false;
     }
 
-    for (std::size_t i = 0; i < logs.size(); i++) {
-        const LogEntry& entry = logs[i];
+    for (std::size_t i = 0; i < selected_session->logs().size(); i++) {
+        const LogEntry& entry = selected_session->logs()[i];
 
         ImVec4 color = ImVec4(0.05f, 0.85f, 0.85f, 1.0f);
         switch (entry.type) {

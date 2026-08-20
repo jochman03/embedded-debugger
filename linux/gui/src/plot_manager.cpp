@@ -3,7 +3,6 @@
 #include "plot_manager.hpp"
 #include "imgui.h"
 #include "implot.h"
-#include "protocol_command.hpp"
 #include "session.hpp"
 #include "application.hpp"
 
@@ -29,7 +28,7 @@ void PlotManager::draw_tiles(const Session& session) {
 
         ImGui::BeginChild("PlotTile", ImVec2(-1.0f, 320.0f), true);
 
-        ImGui::Text("Plot %zu", plot.plot_number);
+        ImGui::Text("Plot %u", plot.plot_number);
         ImGui::SameLine();
         ImGui::Checkbox("Follow", &plot.follow);
 
@@ -250,4 +249,13 @@ void PlotManager::update_recorders() {
         }
         last_recorders_flush_ = now;
     }
+}
+
+void to_json(json& j, const PlotManager& plot_manager) {
+    j = json{{"plots", plot_manager.plots_}, {"next_plot_id", plot_manager.next_plot_id_}};
+}
+
+void from_json(const json& j, PlotManager& plot_manager) {
+    plot_manager.plots_ = j.at("plots").get<std::vector<PlotTile>>();
+    plot_manager.next_plot_id_ = j.at("next_plot_id").get<std::uint32_t>();
 }

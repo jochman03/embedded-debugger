@@ -1,5 +1,7 @@
 # Build
 build/
+build-gui/*
+build-cli/*
 linux/build*/
 embedded/build*
 cmake-build-*/
@@ -49,7 +51,6 @@ logs/
 *.log
 
 # Crash dumps
-core
 core.*
 vgcore.*
 
@@ -62,3 +63,6 @@ vgcore.*
 *~
 .cache/
 .clangd/
+
+#User data
+profiles

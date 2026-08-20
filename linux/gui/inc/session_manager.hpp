@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <nlohmann/json_fwd.hpp>
 
 #include "session.hpp"
 
@@ -22,6 +23,9 @@ class SessionManager {
     bool remove_session(std::uint32_t session_id);
 
     const std::vector<Session>& sessions() const;
+
+    friend void to_json(nlohmann::json& j, const SessionManager& session_manager);
+    friend void from_json(const nlohmann::json& j, SessionManager& session_manager);
 
   private:
     std::vector<Session> sessions_;

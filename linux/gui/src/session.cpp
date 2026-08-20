@@ -46,6 +46,20 @@ std::uint32_t Session::id() const {
     return id_;
 }
 
+std::vector<LogEntry>& Session::logs() {
+    return logs_;
+}
+
 const std::map<std::uint8_t, PlotSeries>& Session::getSeries() const {
     return series_;
+}
+
+void to_json(nlohmann::json& j, const Session& session) {
+    j = json{{"id", session.id_}, {"logs", session.logs_}, {"series", session.series_}};
+}
+
+void from_json(const nlohmann::json& j, Session& session) {
+    session.id_ = j.at("id").get<std::uint32_t>();
+    session.logs_ = j.at("logs").get<std::vector<LogEntry>>();
+    session.series_ = j.at("series").get<std::map<std::uint8_t, PlotSeries>>();
 }

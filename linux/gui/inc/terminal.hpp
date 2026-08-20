@@ -2,5 +2,6 @@
 
 #include <vector>
 #include "log_entry.hpp"
+#include "session_manager.hpp"
 
-void draw_terminal_panel(std::vector<LogEntry>& logs, bool terminal_updated);
+void draw_terminal_panel(SessionManager* session_manager, bool terminal_updated);

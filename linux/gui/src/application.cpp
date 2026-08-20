@@ -1,23 +1,42 @@
-#include "application.hpp"
 #include <string>
 #include <vector>
+#include <iostream>
 
+#include "application.hpp"
 #include "serial_port.hpp"
 #include "serial_scan.hpp"
 #include "protocol_parser.hpp"
 #include "protocol_command.hpp"
 #include "log_entry.hpp"
+#include "log_type.hpp"
 #include "imgui.h"
 #include "plot_manager.hpp"
 #include "terminal.hpp"
 #include "session.hpp"
+#include "colors.hpp"
 
 Application::Application() {
     ports = scan_serial_ports();
     selected_port = ports.empty() ? -1 : 0;
+
+    profile_manager.load_profiles();
+    if (profile_manager.profiles().empty()) {
+        profile_manager.create_profile();
+        profile_manager.activate_profile(1);
+    }
 }
 
 void Application::update() {
+
+    SessionManager* session_manager{nullptr};
+    Session* active_session{nullptr};
+    PlotManager* plots{nullptr};
+    auto active_profile = profile_manager.active_profile();
+    if (active_profile != nullptr) {
+        session_manager = active_profile->session_manager();
+        active_session = session_manager->active_session();
+        plots = active_profile->plot_manager();
+    }
 
     ImGuiViewport* viewport = ImGui::GetMainViewport();
 
@@ -84,21 +103,24 @@ void Application::update() {
     if (serial.is_open()) {
         if (ImGui::Button("Disconnect", ImVec2(100.0f, 0.0f))) {
             serial.close();
-            session_manager.close_session();
+            if (session_manager != nullptr) {
+                session_manager->close_session();
+            }
         }
     } else {
         ImGui::BeginDisabled(!valid_port);
 
         if (ImGui::Button("Connect", ImVec2(100.0f, 0.0f))) {
             if (serial.open(ports[selected_port], 115200)) {
-                std::vector<std::uint8_t> request = make_command(Command::RequestRegisters, {});
+                parser.clear();
+
+                std::vector<std::uint8_t> request = make_command(0x10, {});
                 if (!serial.write_bytes(request.data(), request.size())) {
-                    std::fprintf(stderr, "Failed to send register request: %s\n",
-                                 serial.error().c_str());
-                } else {
-                    std::fprintf(stderr, "Register request sent\n");
+                    std::cerr << "Failed to send register request: " << serial.error() << std::endl;
                 }
-                session_manager.start_session();
+                if (session_manager != nullptr) {
+                    session_manager->start_session();
+                }
             }
         }
 
@@ -118,9 +140,10 @@ void Application::update() {
     ImGui::EndChild();
 
     bool received_data = false;
-    auto active_session = session_manager.active_session();
-
-    if (active_session != nullptr && serial.is_open()) {
+    if (session_manager != nullptr) {
+        active_session = session_manager->active_session();
+    }
+    if (active_session != nullptr && session_manager != nullptr && serial.is_open()) {
         const std::vector<std::uint8_t> data = serial.read_available();
 
         if (!data.empty()) {
@@ -138,12 +161,11 @@ void Application::update() {
                     entry.message = frame.message;
                     entry.type = prefix_to_log_type(frame.prefix);
                     entry.active = true;
-
-                    logs.push_back(entry);
+                    active_session->logs().push_back(entry);
                     if (entry.type == LogType::Reset) {
-                        deactivate_entries(logs);
-                        session_manager.close_session();
-                        session_manager.start_session();
+                        session_manager->close_session();
+                        session_manager->start_session();
+                        active_session = session_manager->active_session();
                     }
 
                     received_data = true;
@@ -160,8 +182,10 @@ void Application::update() {
             }
         }
     }
-    plots.update_recorders();
-    draw_workspace(plots, logs, received_data);
+    if (plots != nullptr) {
+        plots->update_recorders();
+    }
+    draw_workspace(received_data);
 
     ImGui::PopStyleVar(4);
 
@@ -170,23 +194,7 @@ void Application::update() {
     ImGui::PopStyleVar(2);
 }
 
-void Application::deactivate_entries(std::vector<LogEntry>& entries) {
-    bool found_latest_restart = false;
-
-    for (int i = (entries.size() - 1); i > -1; i--) {
-        LogEntry& entry = entries[i];
-        if (found_latest_restart) {
-            entry.active = false;
-            continue;
-        }
-        if (entry.type == LogType::Reset) {
-            found_latest_restart = true;
-        }
-    }
-}
-
-void Application::draw_workspace(PlotManager& plots, std::vector<LogEntry>& logs,
-                                 bool terminal_updated) {
+void Application::draw_workspace(bool terminal_updated) {
     const ImVec2 available = ImGui::GetContentRegionAvail();
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
 
@@ -195,11 +203,22 @@ void Application::draw_workspace(PlotManager& plots, std::vector<LogEntry>& logs
     const float right_width = usable_width * 0.2f;
     const float center_width = usable_width - left_width - right_width;
 
-    auto selected_session = session_manager.selected_session();
+    SessionManager* session_manager{nullptr};
+    PlotManager* plots{nullptr};
+    auto active_profile = profile_manager.active_profile();
+    if (active_profile != nullptr) {
+        session_manager = active_profile->session_manager();
+        plots = active_profile->plot_manager();
+    }
+
+    Session* selected_session = nullptr;
+    if (session_manager != nullptr) {
+        selected_session = session_manager->selected_session();
+    }
 
     ImGui::BeginChild("TerminalPanel", ImVec2(left_width, available.y), true);
 
-    draw_terminal_panel(logs, terminal_updated);
+    draw_terminal_panel(session_manager, terminal_updated);
 
     ImGui::EndChild();
 
@@ -207,8 +226,8 @@ void Application::draw_workspace(PlotManager& plots, std::vector<LogEntry>& logs
 
     ImGui::BeginChild("PlotsPanel", ImVec2(center_width, available.y), true);
 
-    if (selected_session != nullptr) {
-        plots.draw_tiles(*selected_session);
+    if (selected_session != nullptr && plots != nullptr) {
+        plots->draw_tiles(*selected_session);
     }
 
     ImGui::EndChild();
@@ -219,19 +238,13 @@ void Application::draw_workspace(PlotManager& plots, std::vector<LogEntry>& logs
 
     if (ImGui::BeginTable("PanelTabs", 3, ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableNextColumn();
-        if (ImGui::Button("Signals", ImVec2(-FLT_MIN, 0.0f))) {
-            left_panel = Panel::Signals;
-        }
+        draw_left_panel_button("Signals", Panel::Signals);
 
         ImGui::TableNextColumn();
-        if (ImGui::Button("Sessions", ImVec2(-FLT_MIN, 0.0f))) {
-            left_panel = Panel::Sessions;
-        }
+        draw_left_panel_button("Sessions", Panel::Sessions);
 
         ImGui::TableNextColumn();
-        if (ImGui::Button("Profiles", ImVec2(-FLT_MIN, 0.0f))) {
-            left_panel = Panel::Profiles;
-        }
+        draw_left_panel_button("Profiles", Panel::Profiles);
 
         ImGui::EndTable();
     }
@@ -244,26 +257,33 @@ void Application::draw_workspace(PlotManager& plots, std::vector<LogEntry>& logs
 }
 
 void Application::draw_signals_panel() {
-    if (session_manager.active_session() == nullptr) {
+    SessionManager* session_manager{nullptr};
+    auto active_profile = profile_manager.active_profile();
+    if (active_profile != nullptr) {
+        session_manager = active_profile->session_manager();
+    }
+
+    if (session_manager == nullptr) {
+        return;
+    }
+    if (session_manager->active_session() == nullptr) {
         return;
     }
 
     if (left_panel != Panel::Signals) {
         return;
     }
-    auto series_ = session_manager.active_session()->getSeries();
+    auto series_ = session_manager->active_session()->getSeries();
 
     if (series_.empty()) {
-        ImGui::TextDisabled("NO registered signals");
+        ImGui::TextDisabled("N0 registered signals");
 
         if (serial.is_open()) {
             if (ImGui::Button("Send signal request")) {
-                std::vector<std::uint8_t> request = make_command(Command::RequestRegisters, {});
+                parser.clear();
+                std::vector<std::uint8_t> request = make_command(0x10, {});
                 if (!serial.write_bytes(request.data(), request.size())) {
-                    std::fprintf(stderr, "Failed to send register request: %s\n",
-                                 serial.error().c_str());
-                } else {
-                    std::fprintf(stderr, "Register request sent\n");
+                    std::cerr << "Failed to send register request: " << serial.error() << std::endl;
                 }
             }
         }
@@ -323,11 +343,21 @@ void Application::draw_signals_panel() {
 }
 
 void Application::draw_sessions_panel() {
+
     if (left_panel != Panel::Sessions) {
         return;
     }
 
-    const auto& sessions = session_manager.sessions();
+    SessionManager* session_manager{nullptr};
+    auto active_profile = profile_manager.active_profile();
+    if (active_profile != nullptr) {
+        session_manager = active_profile->session_manager();
+    }
+    if (session_manager == nullptr || left_panel != Panel::Sessions) {
+        return;
+    }
+
+    const auto& sessions = session_manager->sessions();
 
     if (sessions.empty()) {
         ImGui::TextDisabled("No sessions");
@@ -350,9 +380,9 @@ void Application::draw_sessions_panel() {
     ImGui::TableSetupColumn("##Remove", ImGuiTableColumnFlags_WidthFixed, 32.0f);
 
     for (const auto& session : sessions) {
-        const bool selected = session.id() == session_manager.selected_session_id();
+        const bool selected = session.id() == session_manager->selected_session_id();
 
-        const bool active = session.id() == session_manager.active_session_id();
+        const bool active = session.id() == session_manager->active_session_id();
 
         ImGui::PushID(static_cast<int>(session.id()));
         ImGui::TableNextRow();
@@ -373,7 +403,7 @@ void Application::draw_sessions_panel() {
                                             session_name.c_str());
 
         if (clicked) {
-            session_manager.select_session(session.id());
+            session_manager->select_session(session.id());
         }
 
         ImGui::TableSetColumnIndex(1);
@@ -394,11 +424,15 @@ void Application::draw_sessions_panel() {
         ImGui::TableSetColumnIndex(2);
 
         ImGui::BeginDisabled(active);
+        ImGui::PushStyleColor(ImGuiCol_Button, colors::red);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, colors::dark_red);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, colors::dark_red);
 
         if (ImGui::SmallButton("-")) {
             ImGui::OpenPopup("Delete session");
         }
 
+        ImGui::PopStyleColor(3);
         ImGui::EndDisabled();
 
         if (ImGui::BeginPopupModal("Delete session", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
@@ -407,10 +441,15 @@ void Application::draw_sessions_panel() {
             ImGui::Separator();
             ImGui::Spacing();
 
+            ImGui::PushStyleColor(ImGuiCol_Button, colors::red);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, colors::dark_red);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, colors::dark_red);
+
             if (ImGui::Button("Delete", ImVec2(90.0f, 0.0f))) {
                 session_to_remove = session.id();
                 ImGui::CloseCurrentPopup();
             }
+            ImGui::PopStyleColor(3);
 
             ImGui::SameLine();
 
@@ -427,8 +466,184 @@ void Application::draw_sessions_panel() {
     ImGui::EndTable();
 
     if (session_to_remove != 0) {
-        session_manager.remove_session(session_to_remove);
+        session_manager->remove_session(session_to_remove);
     }
 }
 
-void Application::draw_profiles_panel() {}
+void Application::draw_profiles_panel() {
+    if (left_panel != Panel::Profiles) {
+        return;
+    }
+
+    auto& profiles = profile_manager.profiles();
+    const auto active_profile = profile_manager.active_profile();
+    SessionManager* session_manager{nullptr};
+    if (active_profile != nullptr) {
+        session_manager = active_profile->session_manager();
+    }
+    if (profiles.empty()) {
+        ImGui::TextDisabled("No profiles");
+        return;
+    }
+
+    std::uint32_t profile_to_remove = 0;
+
+    const ImGuiTableFlags table_flags =
+        ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoSavedSettings;
+
+    if (!ImGui::BeginTable("ProfilesTable", 3, table_flags)) {
+        return;
+    }
+
+    ImGui::TableSetupColumn("##Profile", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("##Status", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+    ImGui::TableSetupColumn("##Remove", ImGuiTableColumnFlags_WidthFixed, 32.0f);
+
+    for (auto& profile : profiles) {
+        const bool active = (profile.id() == active_profile->id());
+
+        ImGui::PushID(static_cast<int>(profile.id()));
+        ImGui::TableNextRow();
+
+        ImGui::TableSetColumnIndex(0);
+
+        const std::string& profile_name = profile.name();
+        char name_buf[128];
+
+        const ImGuiInputTextFlags flags = ImGuiInputTextFlags_EnterReturnsTrue;
+        std::snprintf(name_buf, sizeof(name_buf), "%s", profile_name.c_str());
+
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, colors::transparent);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if (ImGui::InputText("##name", name_buf, sizeof(name_buf), flags)) {
+            profile.set_name(name_buf);
+            profile.update_now();
+        }
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            profile.set_name(name_buf);
+            profile.update_now();
+        }
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor();
+
+        ImGui::TableSetColumnIndex(1);
+
+        if (active) {
+            const char* status = "Active";
+            const float text_width = ImGui::CalcTextSize(status).x;
+            const float available_width = ImGui::GetContentRegionAvail().x;
+            const float offset = (available_width - text_width) * 0.5f;
+
+            if (offset > 0.0f) {
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset);
+            }
+            ImGui::TextDisabled("%s", status);
+        } else {
+            if (ImGui::SmallButton("Activate")) {
+                ImGui::OpenPopup("Activate profile");
+            }
+        }
+
+        ImGui::TableSetColumnIndex(2);
+
+        ImGui::BeginDisabled(active);
+
+        ImGui::PushStyleColor(ImGuiCol_Button, colors::red);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, colors::dark_red);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, colors::dark_red);
+
+        if (ImGui::SmallButton("-")) {
+            ImGui::OpenPopup("Delete profile");
+        }
+        ImGui::PopStyleColor(3);
+
+        ImGui::EndDisabled();
+
+        if (ImGui::BeginPopupModal("Delete profile", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Are you sure you want to delete profile %s?", profile_name.c_str());
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            ImGui::PushStyleColor(ImGuiCol_Button, colors::red);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, colors::dark_red);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, colors::dark_red);
+
+            if (ImGui::Button("Delete", ImVec2(90.0f, 0.0f))) {
+                profile_to_remove = profile.id();
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::PopStyleColor(3);
+            ImGui::SameLine();
+
+            if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f))) {
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+        if (ImGui::BeginPopupModal("Activate profile", nullptr,
+                                   ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Are you sure you want to activate profile %s?", profile_name.c_str());
+            ImGui::Text("Active session and serial connection will be closed");
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            ImGui::PushStyleColor(ImGuiCol_Button, colors::red);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, colors::dark_red);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, colors::dark_red);
+
+            if (ImGui::Button("Activate", ImVec2(90.0f, 0.0f))) {
+                if (active_profile != nullptr && session_manager != nullptr) {
+                    serial.close();
+                    session_manager->close_session();
+                    if (profile_manager.activate_profile(profile.id())) {
+
+                    } else {
+                        std::cerr << "Could not find profile with id = " << profile.id()
+                                  << std::endl;
+                    }
+                }
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::PopStyleColor(3);
+            ImGui::SameLine();
+
+            if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f))) {
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+        ImGui::PopID();
+    }
+    ImGui::EndTable();
+    if (ImGui::Button("New profile")) {
+        profile_manager.create_profile();
+    }
+    if (ImGui::Button("save profile")) {
+        profile_manager.save_profile(profile_manager.active_profile_id());
+    }
+    if (profile_to_remove != 0) {
+        profile_manager.remove_profile(profile_to_remove);
+    }
+}
+
+void Application::draw_left_panel_button(const std::string name, Panel panel) {
+    bool clicked{false};
+    if (left_panel != panel) {
+        ImGui::PushStyleColor(ImGuiCol_Button, colors::transparent);
+    }
+    if (ImGui::Button(name.c_str(), ImVec2(-FLT_MIN, 0.0f))) {
+        clicked = true;
+    }
+    if (left_panel != panel) {
+        ImGui::PopStyleColor();
+    }
+    if (clicked) {
+        left_panel = panel;
+    }
+}
