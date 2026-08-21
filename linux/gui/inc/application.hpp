@@ -9,6 +9,7 @@
 #include "protocol_parser.hpp"
 #include "session_manager.hpp"
 #include "profile_manager.hpp"
+#include "panels.hpp"
 
 class Application {
   public:
@@ -18,17 +19,12 @@ class Application {
   private:
     void draw_workspace(bool terminal_updated);
 
-    void draw_signals_panel();
-    void draw_sessions_panel();
-    void draw_profiles_panel();
-
-    void draw_left_panel_button(const std::string name, Panel panel);
     std::vector<std::string> ports;
     int selected_port{-1};
     SerialPort serial;
     ProtocolParser parser;
 
-    Panel left_panel{Panel::Signals};
-
     ProfileManager profile_manager;
+
+    Panel left_panel{Panel::Signals};
 };

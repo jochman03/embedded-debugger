@@ -5,8 +5,6 @@
 #include <cstdint>
 #include <nlohmann/json.hpp>
 
-#include "recording.hpp"
-
 using json = nlohmann::json;
 
 struct PlotPoint {
@@ -30,21 +28,4 @@ struct PlotSeries {
 
     friend void to_json(json& j, const PlotSeries& plot_series);
     friend void from_json(const json& j, PlotSeries& plot_series);
-};
-
-struct PlotTile {
-    std::uint32_t id;
-    std::uint32_t plot_number;
-    std::vector<std::uint8_t> signal_ids;
-
-    bool follow = true;
-    bool auto_y = true;
-    bool paused = false;
-    bool reset_view = true;
-
-    float follow_seconds = 3600.0f;
-    Recorder recorder;
-
-    friend void to_json(json& j, const PlotTile& plot_tile);
-    friend void from_json(const json& j, PlotTile& plot_tile);
 };

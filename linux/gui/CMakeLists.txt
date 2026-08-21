@@ -42,9 +42,11 @@ add_executable(debugger_gui
     src/recording.cpp
     src/session.cpp
     src/session_manager.cpp
+    src/panels.cpp
     src/profile.cpp
     src/profile_manager.cpp
     src/log_entry.cpp
+    src/plot_tile.cpp
 
 
     ${IMGUI_DIR}/imgui.cpp

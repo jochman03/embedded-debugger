@@ -10,11 +10,10 @@
 
 #include "serial_port.hpp"
 #include "recording.hpp"
+#include "plot_tile.hpp"
 #include "plot.hpp"
 
 class Session;
-
-enum class Panel { Signals, Sessions, Profiles };
 
 using json = nlohmann::json;
 
