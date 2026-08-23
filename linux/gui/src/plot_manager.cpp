@@ -5,7 +5,8 @@
 #include "session.hpp"
 #include "plot_tile.hpp"
 
-void PlotManager::draw_tiles(const Session& session) {
+void PlotManager::draw_tiles(const Session& session,
+                             const std::map<std::uint8_t, std::string>& signal_registry) {
     ImGui::TextUnformatted("Plots");
     ImGui::Separator();
 
@@ -18,7 +19,7 @@ void PlotManager::draw_tiles(const Session& session) {
     int plot_to_remove = -1;
 
     for (std::size_t index = 0; index < plots_.size(); ++index) {
-        if (plots_[index].draw(session, plots_.size() > 1, max_signals_per_plot)) {
+        if (plots_[index].draw(session, signal_registry, plots_.size() > 1, max_signals_per_plot)) {
             plot_to_remove = static_cast<int>(index);
         }
     }

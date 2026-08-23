@@ -20,9 +20,17 @@ Application::Application() {
     selected_port = ports.empty() ? -1 : 0;
 
     profile_manager.load_profiles();
-    if (profile_manager.profiles().empty()) {
+    if (profile_manager.profile_list().empty()) {
         profile_manager.create_profile();
         profile_manager.activate_profile(1);
+    } else if (profile_manager.active_profile() == nullptr) {
+        const std::uint32_t id = profile_manager.active_profile_id();
+        if (id != 0) {
+            profile_manager.activate_profile(id);
+        }
+        if (profile_manager.active_profile() == nullptr) {
+            profile_manager.activate_profile(profile_manager.profile_list().front().id);
+        }
     }
 }
 
@@ -172,12 +180,15 @@ void Application::update() {
                 }
 
                 if (frame.type == FrameType::Register) {
-                    active_session->register_signal(frame.signal_id, frame.name);
+                    if (active_profile != nullptr) {
+                        active_profile->register_signal(frame.signal_id, frame.name);
+                        profile_manager.save_profile(active_profile->id());
+                    }
                     received_data = true;
                 }
                 if (frame.type == FrameType::Plot) {
-                    active_session->add_sample(frame.signal_id, frame.name, frame.timestamp,
-                                               frame.value);
+                    active_session->add_sample(frame.signal_id, frame.timestamp, frame.value,
+                                               ImGui::GetTime());
                 }
             }
         }
@@ -192,6 +203,16 @@ void Application::update() {
     ImGui::End();
 
     ImGui::PopStyleVar(2);
+}
+
+void Application::shutdown() {
+    if (serial.is_open()) {
+        serial.close();
+    }
+    Profile* profile = profile_manager.active_profile();
+    if (profile != nullptr) {
+        profile_manager.save_profile(profile->id());
+    }
 }
 
 void Application::draw_workspace(bool terminal_updated) {
@@ -227,7 +248,7 @@ void Application::draw_workspace(bool terminal_updated) {
     ImGui::BeginChild("PlotsPanel", ImVec2(center_width, available.y), true);
 
     if (selected_session != nullptr && plots != nullptr) {
-        plots->draw_tiles(*selected_session);
+        plots->draw_tiles(*selected_session, active_profile->signal_registry());
     }
 
     ImGui::EndChild();

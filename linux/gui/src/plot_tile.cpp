@@ -6,7 +6,9 @@
 #include "imgui.h"
 #include "implot.h"
 
-bool PlotTile::draw(const Session& session, bool removable, std::size_t max_signals) {
+bool PlotTile::draw(const Session& session,
+                    const std::map<std::uint8_t, std::string>& signal_registry, bool removable,
+                    std::size_t max_signals) {
     bool remove_plot = false;
     int signal_to_remove = -1;
     const auto& series_map = session.getSeries();
@@ -93,13 +95,6 @@ bool PlotTile::draw(const Session& session, bool removable, std::size_t max_sign
     if (reset_view) {
         ImPlot::SetNextAxesToFit();
         reset_view = false;
-    } else if (!paused && has_data) {
-        if (follow) {
-            const double window = static_cast<double>(follow_seconds);
-
-            ImPlot::SetNextAxisLimits(ImAxis_X1, latest_time - window, latest_time,
-                                      ImPlotCond_Always);
-        }
     }
     if (auto_y) {
         ImPlot::SetNextAxisToFit(ImAxis_Y1);
@@ -115,6 +110,13 @@ bool PlotTile::draw(const Session& session, bool removable, std::size_t max_sign
         }
         ImPlot::SetupAxes("Time [s]", "Value", x_flags, y_flags);
 
+        if (!paused && has_data && follow) {
+            const double window = static_cast<double>(follow_seconds);
+
+            ImPlot::SetupAxisLimits(ImAxis_X1, latest_time - window, latest_time,
+                                    ImPlotCond_Always);
+        }
+
         for (const std::uint8_t signal_id : signal_ids) {
             const auto series_it = series_map.find(signal_id);
 
@@ -128,7 +130,15 @@ bool PlotTile::draw(const Session& session, bool removable, std::size_t max_sign
                 continue;
             }
 
-            const std::string label = series.name + "##signal_" + std::to_string(signal_id);
+            std::string name;
+            const auto name_it = signal_registry.find(signal_id);
+            if (name_it != signal_registry.end()) {
+                name = name_it->second;
+            } else {
+                name = "signal_" + std::to_string(signal_id);
+            }
+
+            const std::string label = name + "##signal_" + std::to_string(signal_id);
 
             ImPlotSpec spec;
             spec.Offset = series.offset;
@@ -137,7 +147,7 @@ bool PlotTile::draw(const Session& session, bool removable, std::size_t max_sign
             ImPlot::PlotLine(label.c_str(), &series.points[0].timestamp, &series.points[0].value,
                              static_cast<int>(series.points.size()), spec);
             if (ImPlot::BeginLegendPopup(label.c_str())) {
-                ImGui::TextUnformatted(series.name.c_str());
+                ImGui::TextUnformatted(name.c_str());
 
                 ImGui::Separator();
 

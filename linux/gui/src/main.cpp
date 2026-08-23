@@ -51,7 +51,7 @@ int main() {
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
-
+    app.shutdown();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImPlot::DestroyContext();

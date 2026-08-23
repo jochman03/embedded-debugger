@@ -16,7 +16,6 @@ struct PlotPoint {
 };
 
 struct PlotSeries {
-    std::string name;
     std::vector<PlotPoint> points;
     double last_value = 0.0;
     double last_timestamp = 0.0;

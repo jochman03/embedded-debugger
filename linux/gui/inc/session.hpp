@@ -1,10 +1,12 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
+#include <string>
+#include <vector>
 #include <nlohmann/json_fwd.hpp>
 
 #include "log_entry.hpp"
-#include "plot_manager.hpp"
 #include "plot.hpp"
 
 class Session {
@@ -16,9 +18,8 @@ class Session {
         id_ = 0;
     };
 
-    void add_sample(std::uint8_t signal_id, const std::string& name, std::uint32_t timestamp_ms,
-                    double value);
-    void register_signal(std::uint8_t signal_id, const std::string& name);
+    void add_sample(std::uint8_t signal_id, std::uint32_t timestamp_ms, double value,
+                    double host_time_s);
     std::uint32_t id() const;
     std::vector<LogEntry>& logs();
     const std::map<std::uint8_t, PlotSeries>& getSeries() const;

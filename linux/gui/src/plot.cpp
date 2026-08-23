@@ -10,8 +10,7 @@ void from_json(const json& j, PlotPoint& plot_point) {
 }
 
 void to_json(json& j, const PlotSeries& plot_series) {
-    j = json{{"name", plot_series.name},
-             {"points", plot_series.points},
+    j = json{{"points", plot_series.points},
              {"last_value", plot_series.last_value},
              {"last_timestamp", plot_series.last_timestamp},
              {"frequency_hz", plot_series.frequency_hz},
@@ -22,7 +21,6 @@ void to_json(json& j, const PlotSeries& plot_series) {
 }
 
 void from_json(const json& j, PlotSeries& plot_series) {
-    plot_series.name = j.at("name").get<std::string>();
     plot_series.points = j.at("points").get<std::vector<PlotPoint>>();
     plot_series.last_value = j.at("last_value").get<double>();
     plot_series.last_timestamp = j.at("last_timestamp").get<double>();

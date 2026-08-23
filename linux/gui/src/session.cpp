@@ -1,13 +1,9 @@
 #include "session.hpp"
-#include "plot_manager.hpp"
-#include "imgui.h"
+#include <nlohmann/json.hpp>
 
-void Session::add_sample(std::uint8_t signal_id, const std::string& name,
-                         std::uint32_t timestamp_ms, double value) {
+void Session::add_sample(std::uint8_t signal_id, std::uint32_t timestamp_ms, double value,
+                         double host_time_s) {
     PlotSeries& series = series_[signal_id];
-    if (series.name.empty()) {
-        series.name = name;
-    }
     if (series.points.capacity() == 0) {
         series.points.reserve(max_samples_);
     }
@@ -26,7 +22,7 @@ void Session::add_sample(std::uint8_t signal_id, const std::string& name,
     series.sample_count++;
     series.last_value = value;
     series.last_timestamp = static_cast<double>(timestamp_ms) / 1000.0;
-    series.last_receive_time = ImGui::GetTime();
+    series.last_receive_time = host_time_s;
     series.has_sample = true;
     if (series.points.size() < max_samples_) {
         series.points.push_back(point);
@@ -35,11 +31,6 @@ void Session::add_sample(std::uint8_t signal_id, const std::string& name,
 
     series.points[series.offset] = point;
     series.offset = (series.offset + 1) % static_cast<int>(max_samples_);
-}
-
-void Session::register_signal(std::uint8_t signal_id, const std::string& name) {
-    PlotSeries& series = series_[signal_id];
-    series.name = name;
 }
 
 std::uint32_t Session::id() const {
@@ -55,11 +46,30 @@ const std::map<std::uint8_t, PlotSeries>& Session::getSeries() const {
 }
 
 void to_json(nlohmann::json& j, const Session& session) {
-    j = json{{"id", session.id_}, {"logs", session.logs_}, {"series", session.series_}};
+    std::map<std::uint8_t, PlotSeries> series;
+    for (const auto& [id, s] : session.series_) {
+        if (s.points.empty() && !s.has_sample) {
+            continue;
+        }
+        series[id] = s;
+    }
+    j = json{{"id", session.id_}, {"logs", session.logs_}, {"series", series}};
 }
 
 void from_json(const nlohmann::json& j, Session& session) {
     session.id_ = j.at("id").get<std::uint32_t>();
     session.logs_ = j.at("logs").get<std::vector<LogEntry>>();
-    session.series_ = j.at("series").get<std::map<std::uint8_t, PlotSeries>>();
+    if (j.contains("series")) {
+        const json& s = j.at("series");
+        if (s.is_array()) {
+            session.series_ = s.get<std::map<std::uint8_t, PlotSeries>>();
+        } else if (s.is_object()) {
+            session.series_.clear();
+            for (const auto& [key, val] : s.items()) {
+                session.series_[static_cast<std::uint8_t>(std::stoul(key))] = val.get<PlotSeries>();
+            }
+        }
+    } else {
+        session.series_.clear();
+    }
 }

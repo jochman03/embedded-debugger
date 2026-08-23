@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <string>
+#include <map>
 #include <cstdint>
 #include <nlohmann/json.hpp>
 
@@ -24,7 +25,8 @@ struct PlotTile {
     float follow_seconds = 3600.0f;
     Recorder recorder;
 
-    bool draw(const Session& session, bool removable, std::size_t max_signals);
+    bool draw(const Session& session, const std::map<std::uint8_t, std::string>& signal_registry,
+              bool removable, std::size_t max_signals);
 
     friend void to_json(json& j, const PlotTile& plot_tile);
     friend void from_json(const json& j, PlotTile& plot_tile);

@@ -2,16 +2,12 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <map>
-#include <string>
 #include <vector>
 #include <chrono>
+#include <map>
 #include <nlohmann/json.hpp>
 
-#include "serial_port.hpp"
-#include "recording.hpp"
 #include "plot_tile.hpp"
-#include "plot.hpp"
 
 class Session;
 
@@ -21,8 +17,8 @@ class PlotManager {
   public:
     PlotManager();
 
-    void draw_tiles(const Session& session);
-
+    void draw_tiles(const Session& session,
+                    const std::map<std::uint8_t, std::string>& signal_registry);
     void add_plot();
     void update_recorders();
 
