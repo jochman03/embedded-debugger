@@ -22,7 +22,11 @@ class Session {
                     double host_time_s);
     std::uint32_t id() const;
     std::vector<LogEntry>& logs();
+    void add_log(LogType type, const std::string& tag, const std::string& message,
+                 double app_time_s);
     const std::map<std::uint8_t, PlotSeries>& getSeries() const;
+
+    void sync_device_time(std::uint32_t device_ms, double app_time_s);
 
     friend void to_json(nlohmann::json& j, const Session& session);
     friend void from_json(const nlohmann::json& j, Session& session);
@@ -34,4 +38,8 @@ class Session {
 
     std::vector<LogEntry> logs_;
     std::map<std::uint8_t, PlotSeries> series_;
+
+    bool is_device_time_synced_{false};
+    std::uint32_t synced_device_time_ms_{0};
+    double synced_app_time_s_{0.0};
 };

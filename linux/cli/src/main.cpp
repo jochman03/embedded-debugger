@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include "log_type.hpp"
+#include "protocol.hpp"
 #include "protocol_command.hpp"
 #include "protocol_parser.hpp"
 #include "serial_port.hpp"
@@ -128,6 +129,14 @@ int main(int argc, char *argv[]) {
 
             rl_on_new_line();
             rl_redisplay();
+          } else if (frame.command >
+                     static_cast<std::uint8_t>(FrameType::Plot)) {
+            std::cout << "\r\033[2K";
+            std::cout << "[RX] [0x" << format_hex_bytes({frame.command}) << "] "
+                      << format_hex_bytes(frame.payload) << '\n'
+                      << std::flush;
+            rl_on_new_line();
+            rl_redisplay();
           }
         }
       }
@@ -145,7 +154,7 @@ int main(int argc, char *argv[]) {
           std::cout
               << "  - dc                       <-  disconnects from serial "
                  "port\n";
-          std::cout << "  - <command> <parameters>   <-  sends user command to "
+          std::cout << "  - <command_id> <parameters>   <-  sends command to "
                        "target "
                        "device\n";
           std::cout << terminal_color::green << "*** ***"
@@ -153,12 +162,19 @@ int main(int argc, char *argv[]) {
 
         } else if (command == "dc") {
           serial.close();
+          std::cout << "Serial closed" << std::endl;
         } else {
-          auto request = make_user_command(command);
-          if (!serial.write_bytes(request.data(), request.size())) {
-            std::cerr << terminal_color::red
-                      << "Failed to send command: " << serial.error()
-                      << terminal_color::reset << '\n';
+          FrameCommand frame{};
+          if (!parse_frame_command(command, frame)) {
+            std::cerr << terminal_color::red << "Invalid syntax"
+                      << terminal_color::reset << std::endl;
+          } else {
+            const auto request = encode_frame_command(frame);
+            if (!serial.write_bytes(request.data(), request.size())) {
+              std::cerr << terminal_color::red
+                        << "Failed to send command: " << serial.error()
+                        << terminal_color::reset << std::endl;
+            }
           }
         }
         pending_command.reset();

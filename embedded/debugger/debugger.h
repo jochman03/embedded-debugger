@@ -12,9 +12,6 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-#define DEBUGGER_SYNC_BYTE_1 0xA0
-#define DEBUGGER_SYNC_BYTE_2 0x0A
-
 #define DEBUGGER_MAX_PREFIX_LENGTH         10
 #define DEBUGGER_MAX_TAG_LENGTH            31
 #define DEBUGGER_MAX_MESSAGE_LENGTH        127
@@ -25,7 +22,6 @@
     (DEBUGGER_MAX_PREFIX_LENGTH + DEBUGGER_MAX_TAG_LENGTH + DEBUGGER_MAX_MESSAGE_LENGTH + 11)
 
 #define DEBUGGER_MAX_COMMAND_PAYLOAD 32
-#define DEBUGGER_COMMAND_QUEUE_SIZE  5
 
 typedef enum debugger_frame_type {
     DEBUGGER_FRAME_TYPE_REGISTER = 0,
@@ -43,15 +39,8 @@ typedef enum debugger_signal_type {
     DEBUGGER_SIGNAL_TYPE_FLOAT
 } debugger_signal_type;
 
-typedef struct debugger_command_t {
-    uint8_t command_type;
-    uint8_t length;
-    uint8_t payload[DEBUGGER_MAX_COMMAND_PAYLOAD + 1];
-    uint8_t argc;
-} debugger_command_t;
-
 typedef struct {
-    void (*transmit_data)(const uint8_t* data, size_t length);
+    void (*transmit)(uint8_t frame_type, const uint8_t* payload, uint8_t length);
     uint32_t (*get_timestamp_ms)(void);
 } debugger_interface_t;
 
@@ -137,54 +126,6 @@ void debugger_register_signal(uint8_t signal_id, debugger_signal_type signal_typ
  */
 void debugger_plot_signal(uint8_t signal_id, const void* value);
 
-/**
- * @brief Processes data received from the debugger host.
- *
- * The function may be called with partial frames or multiple frames in one
- * data block.
- *
- * @param data Pointer to the received bytes.
- * @param length Number of received bytes.
- *
- * @note Available only when DEBUGGER_ENABLED is set to 1.
- */
-void debugger_process_data(const uint8_t* data, size_t length);
-
-/**
- * @brief Retrieves the oldest command from the command queue.
- *
- * @param command Destination for the retrieved command.
- * @return True if a command was retrieved, otherwise false.
- *
- * @note Available only when DEBUGGER_ENABLED is set to 1.
- */
-bool debugger_get_command(debugger_command_t* command);
-
-/**
- * @brief Returns an argument from a parsed command.
- *
- * @param command Pointer to the parsed command.
- * @param index Zero-based argument index.
- * @return Pointer to the argument string, or NULL if the index is invalid.
- *
- * @note The returned pointer remains valid while command remains valid.
- * @note Available only when DEBUGGER_ENABLED is set to 1.
- */
-const char* debugger_get_command_arg(const debugger_command_t* command, uint8_t index);
-
-/**
- * @brief Calculates the crc-8 checksum of a data block.
- *
- * The calculation uses polynomial 0x07 and an initial value of zero.
- *
- * @param data Pointer to the input bytes.
- * @param length Number of bytes to process.
- * @return Calculated crc-8 checksum.
- *
- * @note Available only when DEBUGGER_ENABLED is set to 1.
- */
-uint8_t debugger_crc8(const uint8_t* data, size_t length);
-
 #else
 
 #define debugger_init(interface)                 (true)
@@ -194,9 +135,6 @@ uint8_t debugger_crc8(const uint8_t* data, size_t length);
 #define debugger_log_reset(tag, reason)          ((void)0)
 #define debugger_register_signal(id, type, name) ((void)0)
 #define debugger_plot_signal(id, value)          ((void)0)
-#define debugger_get_command(command)            (false)
-#define debugger_get_command_arg(command, index) (NULL)
-
 #endif /* DEBUGGER_ENABLED */
 
 #endif /* DEBUGGER_H */

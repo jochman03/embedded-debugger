@@ -30,7 +30,15 @@ float ProtocolParser::read_float(std::size_t offset) const {
 
 ParsedFrame ProtocolParser::decode_frame() {
     ParsedFrame frame{};
+
+    frame.command = type_;
+    frame.payload.assign(payload_.begin(), payload_.begin() + length_);
     frame.type = static_cast<FrameType>(type_);
+
+    if (frame.command > static_cast<std::uint8_t>(FrameType::Plot)) {
+        return frame;
+    }
+
     if (frame.type == FrameType::Register) {
         if (length_ < 3) {
             return frame;

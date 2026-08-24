@@ -41,8 +41,48 @@ std::vector<LogEntry>& Session::logs() {
     return logs_;
 }
 
+void Session::add_log(LogType type, const std::string& tag, const std::string& message,
+                      double app_time_s) {
+    LogEntry entry;
+    std::uint32_t timestamp_ms = app_time_s * 1000;
+
+    if (is_device_time_synced_) {
+        const double delta_s = app_time_s - synced_app_time_s_;
+        if (delta_s > 0.0) {
+            timestamp_ms = synced_device_time_ms_ + static_cast<std::uint32_t>(delta_s * 1000.0);
+        } else {
+            timestamp_ms = synced_device_time_ms_;
+        }
+    }
+
+    entry.timestamp = timestamp_ms;
+    entry.type = type;
+    entry.tag = tag;
+    entry.message = message;
+    entry.active = true;
+
+    switch (type) {
+        case LogType::Error:
+            entry.prefix = "[ERROR]";
+            break;
+        case LogType::Warning:
+            entry.prefix = "[WARNING]";
+            break;
+        default:
+            entry.prefix = "[INFO]";
+            break;
+    }
+    logs_.push_back(entry);
+}
+
 const std::map<std::uint8_t, PlotSeries>& Session::getSeries() const {
     return series_;
+}
+
+void Session::sync_device_time(std::uint32_t device_ms, double app_time_s) {
+    synced_device_time_ms_ = device_ms;
+    synced_app_time_s_ = app_time_s;
+    is_device_time_synced_ = true;
 }
 
 void to_json(nlohmann::json& j, const Session& session) {

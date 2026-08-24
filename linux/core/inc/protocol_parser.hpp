@@ -19,6 +19,9 @@ struct SignalInfo {
 };
 
 struct ParsedFrame {
+    std::uint8_t command = 0;
+    std::vector<std::uint8_t> payload;
+
     FrameType type;
     std::uint8_t signal_id = 0;
     SignalType signal_type = SignalType::Uint8;

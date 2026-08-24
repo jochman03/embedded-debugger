@@ -1,16 +1,34 @@
+#include <iostream>
+
 #include "terminal.hpp"
 #include "log_entry.hpp"
+#include "serial_port.hpp"
+#include "protocol_command.hpp"
+#include "protocol.hpp"
+
 #include "imgui.h"
 
-void draw_terminal_panel(SessionManager* session_manager, bool terminal_updated) {
+static std::vector<std::string> command_history;
+static int command_history_pos = -1;
+static char command_line[256] = {};
+
+static int command_input_callback(ImGuiInputTextCallbackData* data);
+
+void draw_terminal_panel(SessionManager* session_manager, SerialPort& serial,
+                         bool terminal_updated) {
     ImGui::TextUnformatted("Terminal");
 
     ImGui::SameLine();
 
     Session* selected_session = nullptr;
+    Session* active_session = nullptr;
+
     if (session_manager != nullptr) {
         selected_session = session_manager->selected_session();
+        active_session = session_manager->active_session();
     }
+
+    const bool active_terminal = selected_session != nullptr && selected_session == active_session;
 
     if (selected_session == nullptr) {
         return;
@@ -28,7 +46,9 @@ void draw_terminal_panel(SessionManager* session_manager, bool terminal_updated)
 
     ImGui::Separator();
 
-    ImGui::BeginChild("##inner_teminal", ImVec2(-1.0f, -1.0f), false);
+    const float input_height = ImGui::GetFrameHeightWithSpacing();
+
+    ImGui::BeginChild("##inner_teminal", ImVec2(-1.0f, -input_height), false);
     static bool follow_terminal = true;
 
     constexpr float bottom_threshold = 2.0f;
@@ -80,4 +100,78 @@ void draw_terminal_panel(SessionManager* session_manager, bool terminal_updated)
         }
     }
     ImGui::EndChild();
+
+    ImGui::BeginDisabled(!serial.is_open() || !active_terminal);
+    static bool focus_command_line{false};
+
+    if (focus_command_line) {
+        ImGui::SetKeyboardFocusHere();
+        focus_command_line = false;
+    }
+
+    ImGui::SetNextItemWidth(-1.0f);
+    const bool submitted =
+        ImGui::InputText("##command_line", command_line, sizeof(command_line),
+                         ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory,
+                         command_input_callback);
+    ImGui::EndDisabled();
+
+    if (submitted && command_line[0] != '\0' && active_terminal && active_session != nullptr) {
+
+        FrameCommand frame{};
+        if (!parse_frame_command(command_line, frame)) {
+            active_session->add_log(LogType::Error, "GUI", "Invalid command syntax.",
+                                    ImGui::GetTime());
+            focus_command_line = true;
+        } else {
+            const auto request = encode_frame_command(frame);
+            if (!serial.write_bytes(request.data(), request.size())) {
+                active_session->add_log(LogType::Error, "GUI", "Failed to send command.",
+                                        ImGui::GetTime());
+            } else {
+                active_session->add_log(LogType::Info, "GUI", std::string("> ") + command_line,
+                                        ImGui::GetTime());
+                if (command_history.empty() || command_history.back() != command_line) {
+                    command_history.push_back(command_line);
+                }
+                command_history_pos = -1;
+            }
+            focus_command_line = true;
+        }
+        command_line[0] = '\0';
+    }
+}
+
+static int command_input_callback(ImGuiInputTextCallbackData* data) {
+    if (data->EventFlag != ImGuiInputTextFlags_CallbackHistory) {
+        return 0;
+    }
+    if (command_history.empty()) {
+        return 0;
+    }
+
+    if (data->EventKey == ImGuiKey_UpArrow) {
+        if (command_history_pos == -1) {
+            command_history_pos = static_cast<int>(command_history.size()) - 1;
+        } else if (command_history_pos > 0) {
+            command_history_pos--;
+        }
+    } else if (data->EventKey == ImGuiKey_DownArrow) {
+        if (command_history_pos >= 0) {
+            command_history_pos++;
+            if (command_history_pos >= static_cast<int>(command_history.size())) {
+                command_history_pos = -1;
+                data->DeleteChars(0, data->BufTextLen);
+                return 0;
+            }
+        }
+    } else {
+        return 0;
+    }
+    if (command_history_pos >= 0) {
+        const std::string& line = command_history[static_cast<std::size_t>(command_history_pos)];
+        data->DeleteChars(0, data->BufTextLen);
+        data->InsertChars(0, line.c_str());
+    }
+    return 0;
 }

@@ -169,12 +169,14 @@ void Application::update() {
                     entry.message = frame.message;
                     entry.type = prefix_to_log_type(frame.prefix);
                     entry.active = true;
-                    active_session->logs().push_back(entry);
+                    active_session->sync_device_time(frame.timestamp, ImGui::GetTime());
+
                     if (entry.type == LogType::Reset) {
                         session_manager->close_session();
                         session_manager->start_session();
                         active_session = session_manager->active_session();
                     }
+                    active_session->logs().push_back(entry);
 
                     received_data = true;
                 }
@@ -189,6 +191,12 @@ void Application::update() {
                 if (frame.type == FrameType::Plot) {
                     active_session->add_sample(frame.signal_id, frame.timestamp, frame.value,
                                                ImGui::GetTime());
+                }
+                if (frame.command > static_cast<std::uint8_t>(FrameType::Plot)) {
+                    const std::string message = "0x" + format_hex_bytes({frame.command}) + " " +
+                                                format_hex_bytes(frame.payload);
+                    active_session->add_log(LogType::Info, "Rx", message, ImGui::GetTime());
+                    received_data = true;
                 }
             }
         }
@@ -239,7 +247,7 @@ void Application::draw_workspace(bool terminal_updated) {
 
     ImGui::BeginChild("TerminalPanel", ImVec2(left_width, available.y), true);
 
-    draw_terminal_panel(session_manager, terminal_updated);
+    draw_terminal_panel(session_manager, serial, terminal_updated);
 
     ImGui::EndChild();
 
