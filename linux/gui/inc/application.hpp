@@ -16,6 +16,8 @@ class Application {
 
   private:
     void draw_workspace(bool terminal_updated);
+    void request_registers();
+
     std::vector<std::string> ports;
     int selected_port{-1};
     SerialPort serial;
@@ -24,4 +26,6 @@ class Application {
     ProfileManager profile_manager;
 
     Panel left_panel{Panel::Signals};
+    double last_register_request_s_{-1.0};
+    static constexpr double register_request_period_s_{1.0};
 };

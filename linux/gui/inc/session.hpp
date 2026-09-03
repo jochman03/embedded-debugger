@@ -27,6 +27,7 @@ class Session {
     const std::map<std::uint8_t, PlotSeries>& getSeries() const;
 
     void sync_device_time(std::uint32_t device_ms, double app_time_s);
+    void clear();
 
     friend void to_json(nlohmann::json& j, const Session& session);
     friend void from_json(const nlohmann::json& j, Session& session);

@@ -7,6 +7,7 @@
 #include "serial_scan.hpp"
 #include "protocol_parser.hpp"
 #include "protocol_command.hpp"
+#include "protocol.hpp"
 #include "log_entry.hpp"
 #include "log_type.hpp"
 #include "imgui.h"
@@ -122,10 +123,6 @@ void Application::update() {
             if (serial.open(ports[selected_port], 115200)) {
                 parser.clear();
 
-                std::vector<std::uint8_t> request = make_command(0x10, {});
-                if (!serial.write_bytes(request.data(), request.size())) {
-                    std::cerr << "Failed to send register request: " << serial.error() << std::endl;
-                }
                 if (session_manager != nullptr) {
                     session_manager->start_session();
                 }
@@ -189,8 +186,12 @@ void Application::update() {
                     received_data = true;
                 }
                 if (frame.type == FrameType::Plot) {
-                    active_session->add_sample(frame.signal_id, frame.timestamp, frame.value,
-                                               ImGui::GetTime());
+                    if (!frame.valid_frame) {
+                        request_registers();
+                    } else {
+                        active_session->add_sample(frame.signal_id, frame.timestamp, frame.value,
+                                                   ImGui::GetTime());
+                    }
                 }
                 if (frame.command > static_cast<std::uint8_t>(FrameType::Plot)) {
                     const std::string message = "0x" + format_hex_bytes({frame.command}) + " " +
@@ -265,4 +266,15 @@ void Application::draw_workspace(bool terminal_updated) {
 
     // PANELS
     draw_side_panels(profile_manager, serial, parser, left_panel, ImVec2(right_width, available.y));
+}
+
+void Application::request_registers() {
+    auto now = ImGui::GetTime();
+    if (now - last_register_request_s_ > register_request_period_s_) {
+        last_register_request_s_ = now;
+        std::vector<std::uint8_t> request = make_command(protocol::cmd_request_registers, {});
+        if (!serial.write_bytes(request.data(), request.size())) {
+            std::cerr << "Failed to send register request: " << serial.error() << std::endl;
+        }
+    }
 }

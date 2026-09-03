@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <nlohmann/json_fwd.hpp>
 
@@ -35,20 +36,36 @@ class SessionManager {
 
     const std::vector<SessionInfo>& session_list() const;
 
+    void toggle_marked_session(std::uint32_t session_id);
+    void clear_marked_sessions();
+    bool is_session_marked(std::uint32_t session_id) const;
+    const std::unordered_set<std::uint32_t>& marked_sessions() const;
+    void remove_marked_sessions();
+    void mark_all_sessions();
+    void mark_session_neighbor(bool up);
+    bool auto_save() const;
+    void set_auto_save(bool enabled);
+    void mark_session_for_save();
+
   private:
     std::uint32_t active_session_id_{0};
     std::uint32_t selected_session_id_{0};
     std::uint32_t next_session_id_{1};
+    std::uint32_t last_clicked_id_{0};
 
     std::vector<SessionInfo> session_list_;
     std::string sessions_dir_;
     std::unordered_map<std::uint32_t, Session> loaded_;
-
     std::string session_path(std::uint32_t id) const;
 
-    void save_session(const Session& session);
+    std::unordered_set<std::uint32_t> marked_session_ids_;
+
+    void save_session(const Session& session, bool force = false);
     bool load_session(std::uint32_t id, Session& session);
     Session* get_session(std::uint32_t id);
     void unload_session(std::uint32_t id);
     void save_sessions_index();
+
+    bool auto_save_{false};
+    bool save_current_session_{false};
 };

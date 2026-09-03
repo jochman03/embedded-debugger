@@ -5,6 +5,7 @@
 #include "colors.hpp"
 
 #include "imgui.h"
+#include "imgui_internal.h"
 
 static void draw_signals_panel(ProfileManager& profile_manager, SerialPort& serial,
                                ProtocolParser& parser, Panel& left_panel);
@@ -13,6 +14,15 @@ static void draw_profiles_panel(ProfileManager& profile_manager, SerialPort& ser
                                 Panel& left_panel);
 
 static void draw_left_panel_button(const std::string name, Panel panel, Panel& left_panel);
+
+static bool enter_key() {
+    return ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+           ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false);
+}
+
+static bool esc_key() {
+    return ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+}
 
 void draw_side_panels(ProfileManager& profile_manager, SerialPort& serial, ProtocolParser& parser,
                       Panel& left_panel, ImVec2 size) {
@@ -150,27 +160,67 @@ static void draw_sessions_panel(ProfileManager& profile_manager, Panel& left_pan
         return;
     }
 
+    if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_A, false) &&
+        ImGui::GetIO().KeyCtrl) {
+        session_manager->mark_all_sessions();
+    }
+    if (!ImGui::GetIO().WantTextInput && ImGui::GetTopMostPopupModal() == nullptr && esc_key()) {
+        session_manager->clear_marked_sessions();
+    }
+    if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
+        if (session_manager->marked_sessions().empty()) {
+            const std::uint32_t selected = session_manager->selected_session_id();
+            const std::uint32_t active = session_manager->active_session_id();
+            if (selected != 0 && selected != active) {
+                session_manager->toggle_marked_session(selected);
+            }
+        }
+        if (!session_manager->marked_sessions().empty()) {
+            ImGui::OpenPopup("Delete sessions");
+        }
+    }
+
+    if (!ImGui::GetIO().WantTextInput && ImGui::GetTopMostPopupModal() == nullptr &&
+        ImGui::GetIO().KeyShift) {
+        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
+            session_manager->mark_session_neighbor(true);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
+            session_manager->mark_session_neighbor(false);
+        }
+    }
+    if (!ImGui::GetIO().WantTextInput && ImGui::GetTopMostPopupModal() == nullptr &&
+        ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false)) {
+        session_manager->mark_session_for_save();
+    }
     const auto& sessions = session_manager->session_list();
 
     if (sessions.empty()) {
         ImGui::TextDisabled("No sessions");
         return;
     }
-
-    std::uint32_t session_to_remove = 0;
+    if (!session_manager->marked_sessions().empty()) {
+        ImGui::Text("%zu selected", session_manager->marked_sessions().size());
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button, colors::red);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, colors::dark_red);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, colors::dark_red);
+        if (ImGui::SmallButton("Delete")) {
+            ImGui::OpenPopup("Delete sessions");
+        }
+        ImGui::PopStyleColor(3);
+        ImGui::Separator();
+    }
 
     const ImGuiTableFlags table_flags =
         ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoSavedSettings;
 
-    if (!ImGui::BeginTable("SessionsTable", 3, table_flags)) {
+    if (!ImGui::BeginTable("SessionsTable", 2, table_flags)) {
         return;
     }
 
     ImGui::TableSetupColumn("##Session", ImGuiTableColumnFlags_WidthStretch);
-
-    ImGui::TableSetupColumn("##Status", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-
-    ImGui::TableSetupColumn("##Remove", ImGuiTableColumnFlags_WidthFixed, 32.0f);
+    ImGui::TableSetupColumn("##Status", ImGuiTableColumnFlags_WidthFixed);
 
     for (const auto& session : sessions) {
         const bool selected = session.id == session_manager->selected_session_id();
@@ -180,7 +230,8 @@ static void draw_sessions_panel(ProfileManager& profile_manager, Panel& left_pan
         ImGui::PushID(static_cast<int>(session.id));
         ImGui::TableNextRow();
 
-        if (selected) {
+        const bool marked = session_manager->is_session_marked(session.id);
+        if (selected || marked) {
             ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_Header));
         }
 
@@ -196,7 +247,12 @@ static void draw_sessions_panel(ProfileManager& profile_manager, Panel& left_pan
                                             session_name.c_str());
 
         if (clicked) {
-            session_manager->select_session(session.id);
+            if (ImGui::GetIO().KeyCtrl && !active) {
+                session_manager->toggle_marked_session(session.id);
+            } else {
+                session_manager->clear_marked_sessions();
+                session_manager->select_session(session.id);
+            }
         }
 
         ImGui::TableSetColumnIndex(1);
@@ -214,52 +270,43 @@ static void draw_sessions_panel(ProfileManager& profile_manager, Panel& left_pan
             ImGui::TextDisabled("%s", status);
         }
 
-        ImGui::TableSetColumnIndex(2);
-
-        ImGui::BeginDisabled(active);
-        ImGui::PushStyleColor(ImGuiCol_Button, colors::red);
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, colors::dark_red);
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, colors::dark_red);
-
-        if (ImGui::SmallButton("-")) {
-            ImGui::OpenPopup("Delete session");
-        }
-
-        ImGui::PopStyleColor(3);
-        ImGui::EndDisabled();
-
-        if (ImGui::BeginPopupModal("Delete session", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Are you sure you want to delete session %u?", session.id);
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            ImGui::PushStyleColor(ImGuiCol_Button, colors::red);
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, colors::dark_red);
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, colors::dark_red);
-
-            if (ImGui::Button("Delete", ImVec2(90.0f, 0.0f))) {
-                session_to_remove = session.id;
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::PopStyleColor(3);
-
-            ImGui::SameLine();
-
-            if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f))) {
-                ImGui::CloseCurrentPopup();
-            }
-
-            ImGui::EndPopup();
-        }
-
         ImGui::PopID();
     }
 
     ImGui::EndTable();
 
-    if (session_to_remove != 0) {
-        session_manager->remove_session(session_to_remove);
+    if (ImGui::BeginPopupModal("Delete sessions", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        const auto& marked = session_manager->marked_sessions();
+        if (marked.size() == 1) {
+            ImGui::Text("Are you sure you want to delete session %u?", *marked.begin());
+        } else {
+            ImGui::Text("Are you sure you want to delete %zu sessions?", marked.size());
+        }
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::PushStyleColor(ImGuiCol_Button, colors::red);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, colors::dark_red);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, colors::dark_red);
+
+        if (ImGui::Button("Delete", ImVec2(90.0f, 0.0f)) || enter_key()) {
+            session_manager->remove_marked_sessions();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::PopStyleColor(3);
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f)) || esc_key()) {
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+    }
+    bool auto_save = session_manager->auto_save();
+    if (ImGui::Checkbox("Auto-save sessions", &auto_save)) {
+        session_manager->set_auto_save(auto_save);
     }
 }
 
@@ -280,18 +327,50 @@ static void draw_profiles_panel(ProfileManager& profile_manager, SerialPort& ser
         return;
     }
 
-    std::uint32_t profile_to_remove = 0;
+    if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_A, false) &&
+        ImGui::GetIO().KeyCtrl) {
+        profile_manager.mark_all_profiles();
+    }
+    if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
+        if (!profile_manager.marked_profiles().empty()) {
+            ImGui::OpenPopup("Delete profiles");
+        }
+    }
+    if (!ImGui::GetIO().WantTextInput && ImGui::GetTopMostPopupModal() == nullptr && esc_key()) {
+        profile_manager.clear_marked_profiles();
+    }
+    if (!ImGui::GetIO().WantTextInput && ImGui::GetTopMostPopupModal() == nullptr &&
+        ImGui::GetIO().KeyShift) {
+        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
+            profile_manager.mark_profile_neighbor(true);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
+            profile_manager.mark_profile_neighbor(false);
+        }
+    }
+
+    if (!profile_manager.marked_profiles().empty()) {
+        ImGui::Text("%zu selected", profile_manager.marked_profiles().size());
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button, colors::red);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, colors::dark_red);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, colors::dark_red);
+        if (ImGui::SmallButton("Delete")) {
+            ImGui::OpenPopup("Delete profiles");
+        }
+        ImGui::PopStyleColor(3);
+        ImGui::Separator();
+    }
 
     const ImGuiTableFlags table_flags =
         ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoSavedSettings;
 
-    if (!ImGui::BeginTable("ProfilesTable", 3, table_flags)) {
+    if (!ImGui::BeginTable("ProfilesTable", 2, table_flags)) {
         return;
     }
 
     ImGui::TableSetupColumn("##Profile", ImGuiTableColumnFlags_WidthStretch);
-    ImGui::TableSetupColumn("##Status", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-    ImGui::TableSetupColumn("##Remove", ImGuiTableColumnFlags_WidthFixed, 32.0f);
+    ImGui::TableSetupColumn("##Status", ImGuiTableColumnFlags_WidthFixed);
 
     bool profile_activated = false;
 
@@ -300,6 +379,11 @@ static void draw_profiles_panel(ProfileManager& profile_manager, SerialPort& ser
 
         ImGui::PushID(static_cast<int>(info.id));
         ImGui::TableNextRow();
+
+        const bool marked = profile_manager.is_profile_marked(info.id);
+        if (marked) {
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_Header));
+        }
 
         ImGui::TableSetColumnIndex(0);
 
@@ -324,7 +408,20 @@ static void draw_profiles_panel(ProfileManager& profile_manager, SerialPort& ser
             ImGui::PopStyleVar();
             ImGui::PopStyleColor();
         } else {
-            ImGui::TextUnformatted(info.name.c_str());
+            const ImVec2 cell_position = ImGui::GetCursorScreenPos();
+            const ImVec2 cell_size(ImGui::GetContentRegionAvail().x, ImGui::GetTextLineHeight());
+            const bool clicked = ImGui::InvisibleButton("##ProfileCell", cell_size);
+
+            ImGui::GetWindowDrawList()->AddText(cell_position, ImGui::GetColorU32(ImGuiCol_Text),
+                                                info.name.c_str());
+
+            if (clicked) {
+                if (ImGui::GetIO().KeyCtrl) {
+                    profile_manager.toggle_marked_profile(info.id);
+                } else {
+                    profile_manager.clear_marked_profiles();
+                }
+            }
         }
 
         ImGui::TableSetColumnIndex(1);
@@ -345,44 +442,6 @@ static void draw_profiles_panel(ProfileManager& profile_manager, SerialPort& ser
             }
         }
 
-        ImGui::TableSetColumnIndex(2);
-
-        ImGui::BeginDisabled(active);
-
-        ImGui::PushStyleColor(ImGuiCol_Button, colors::red);
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, colors::dark_red);
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, colors::dark_red);
-
-        if (ImGui::SmallButton("-")) {
-            ImGui::OpenPopup("Delete profile");
-        }
-        ImGui::PopStyleColor(3);
-
-        ImGui::EndDisabled();
-
-        if (ImGui::BeginPopupModal("Delete profile", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Are you sure you want to delete profile %s?", info.name.c_str());
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            ImGui::PushStyleColor(ImGuiCol_Button, colors::red);
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, colors::dark_red);
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, colors::dark_red);
-
-            if (ImGui::Button("Delete", ImVec2(90.0f, 0.0f))) {
-                profile_to_remove = info.id;
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::PopStyleColor(3);
-            ImGui::SameLine();
-
-            if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f))) {
-                ImGui::CloseCurrentPopup();
-            }
-
-            ImGui::EndPopup();
-        }
         if (ImGui::BeginPopupModal("Activate profile", nullptr,
                                    ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Are you sure you want to activate profile %s?", info.name.c_str());
@@ -395,7 +454,7 @@ static void draw_profiles_panel(ProfileManager& profile_manager, SerialPort& ser
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, colors::dark_red);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, colors::dark_red);
 
-            if (ImGui::Button("Activate", ImVec2(90.0f, 0.0f))) {
+            if (ImGui::Button("Activate", ImVec2(90.0f, 0.0f)) || enter_key()) {
                 serial.close();
                 if (session_manager != nullptr) {
                     session_manager->close_session();
@@ -411,7 +470,7 @@ static void draw_profiles_panel(ProfileManager& profile_manager, SerialPort& ser
             ImGui::PopStyleColor(3);
             ImGui::SameLine();
 
-            if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f))) {
+            if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f)) || esc_key()) {
                 ImGui::CloseCurrentPopup();
             }
 
@@ -423,15 +482,43 @@ static void draw_profiles_panel(ProfileManager& profile_manager, SerialPort& ser
         }
     }
     ImGui::EndTable();
+
+    if (ImGui::BeginPopupModal("Delete profiles", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        const auto& marked = profile_manager.marked_profiles();
+        if (marked.size() == 1) {
+            ImGui::Text("Are you sure you want to delete profile %u?", *marked.begin());
+        } else {
+            ImGui::Text("Are you sure you want to delete %zu profiles?", marked.size());
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::PushStyleColor(ImGuiCol_Button, colors::red);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, colors::dark_red);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, colors::dark_red);
+
+        if (ImGui::Button("Delete", ImVec2(90.0f, 0.0f)) || enter_key()) {
+            profile_manager.remove_marked_profiles();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::PopStyleColor(3);
+        ImGui::SameLine();
+
+        if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f)) || esc_key()) {
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+    }
+
     if (profile_activated) {
         return;
     }
 
     if (ImGui::Button("New profile")) {
         profile_manager.create_profile();
-    }
-    if (profile_to_remove != 0) {
-        profile_manager.remove_profile(profile_to_remove);
     }
 }
 

@@ -15,6 +15,7 @@ using json = nlohmann::json;
 void ProfileManager::load_profiles() {
     active_.reset();
     profile_list_.clear();
+    clear_marked_profiles();
 
     active_profile_id_ = 0;
     next_profile_id_ = 1;
@@ -37,6 +38,7 @@ void ProfileManager::load_profiles() {
         info.file_path = entry.at("file_path").get<std::string>();
         profile_list_.push_back(info);
     }
+    last_clicked_id_ = active_profile_id_;
 }
 
 void ProfileManager::load_profile(Profile& profile) {
@@ -82,6 +84,12 @@ bool ProfileManager::remove_profile(std::uint32_t profile_id) {
     }
     profile_list_.erase(it);
     save_profiles_index();
+
+    marked_profile_ids_.erase(profile_id);
+
+    if (last_clicked_id_ == profile_id) {
+        last_clicked_id_ = active_profile_id_;
+    }
     return true;
 }
 
@@ -99,12 +107,14 @@ bool ProfileManager::activate_profile(std::uint32_t profile_id) {
     active_->file_path() = it->file_path;
 
     active_profile_id_ = profile_id;
+    last_clicked_id_ = profile_id;
     save_profiles_index();
 
     load_profile(*active_);
     active_->session_manager()->set_sessions_dir(sessions_dir());
     active_->session_manager()->load_sessions_index();
 
+    clear_marked_profiles();
     return true;
 }
 
@@ -183,4 +193,77 @@ std::string ProfileManager::sessions_dir() {
 
 const std::vector<ProfileInfo>& ProfileManager::profile_list() const {
     return profile_list_;
+}
+
+void ProfileManager::toggle_marked_profile(std::uint32_t profile_id) {
+    if ((profile_id == 0) || (profile_id == active_profile_id_)) {
+        return;
+    }
+    last_clicked_id_ = profile_id;
+    if (!marked_profile_ids_.erase(profile_id)) {
+        marked_profile_ids_.insert(profile_id);
+    }
+}
+
+void ProfileManager::clear_marked_profiles() {
+    marked_profile_ids_.clear();
+}
+
+bool ProfileManager::is_profile_marked(std::uint32_t profile_id) const {
+    return marked_profile_ids_.count(profile_id) > 0;
+}
+
+const std::unordered_set<std::uint32_t>& ProfileManager::marked_profiles() const {
+    return marked_profile_ids_;
+}
+
+void ProfileManager::remove_marked_profiles() {
+    const auto ids = marked_profile_ids_;
+    for (std::uint32_t id : ids) {
+        remove_profile(id);
+    }
+    clear_marked_profiles();
+}
+
+void ProfileManager::mark_all_profiles() {
+    for (const auto& info : profile_list_) {
+        if (info.id != active_profile_id_ && info.id != 0) {
+            marked_profile_ids_.insert(info.id);
+        }
+    }
+}
+
+void ProfileManager::mark_profile_neighbor(bool up) {
+    if (profile_list_.empty()) {
+        return;
+    }
+
+    const int delta = up ? -1 : 1;
+    int i = -1;
+    for (int k = 0; k < static_cast<int>(profile_list_.size()); ++k) {
+        if (profile_list_[k].id == last_clicked_id_) {
+            i = k;
+            break;
+        }
+    }
+    if (i < 0) {
+        for (int k = 0; k < static_cast<int>(profile_list_.size()); ++k) {
+            if (profile_list_[k].id == active_profile_id_) {
+                i = k;
+                break;
+            }
+        }
+    }
+    if (i < 0) {
+        i = 0;
+    }
+
+    for (int j = i + delta; j >= 0 && j < static_cast<int>(profile_list_.size()); j += delta) {
+        const std::uint32_t id = profile_list_[j].id;
+        last_clicked_id_ = id;
+        if (id != active_profile_id_) {
+            marked_profile_ids_.insert(id);
+            return;
+        }
+    }
 }

@@ -32,6 +32,7 @@ struct ParsedFrame {
     std::string prefix;
     std::string tag;
     std::string message;
+    bool valid_frame{false};
 };
 
 class ProtocolParser {

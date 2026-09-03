@@ -55,6 +55,7 @@ ParsedFrame ProtocolParser::decode_frame() {
         signal.type = frame.signal_type;
         signal.signal_size = signal_size(frame.signal_type);
         signals_[frame.signal_id] = signal;
+        frame.valid_frame = true;
     } else if (frame.type == FrameType::Log) {
         if (length_ < 7) {
             return frame;
@@ -74,6 +75,7 @@ ParsedFrame ProtocolParser::decode_frame() {
         frame.tag.assign(reinterpret_cast<const char*>(payload_.data() + tag_offset), tag_length);
         frame.message.assign(reinterpret_cast<const char*>(payload_.data() + message_offset),
                              message_length);
+        frame.valid_frame = true;
     } else if (frame.type == FrameType::Plot) {
         if (length_ < 5) {
             return frame;
@@ -112,6 +114,7 @@ ParsedFrame ProtocolParser::decode_frame() {
                 frame.value = read_float(value_offset);
                 break;
         }
+        frame.valid_frame = true;
     }
     return frame;
 }

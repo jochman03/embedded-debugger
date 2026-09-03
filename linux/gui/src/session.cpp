@@ -85,6 +85,14 @@ void Session::sync_device_time(std::uint32_t device_ms, double app_time_s) {
     is_device_time_synced_ = true;
 }
 
+void Session::clear() {
+    logs_.clear();
+    series_.clear();
+    is_device_time_synced_ = false;
+    synced_device_time_ms_ = 0;
+    synced_app_time_s_ = 0.0;
+}
+
 void to_json(nlohmann::json& j, const Session& session) {
     std::map<std::uint8_t, PlotSeries> series;
     for (const auto& [id, s] : session.series_) {

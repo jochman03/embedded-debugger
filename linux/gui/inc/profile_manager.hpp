@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <unordered_set>
 
 #include "profile.hpp"
 
@@ -26,10 +27,21 @@ class ProfileManager {
 
     const std::vector<ProfileInfo>& profile_list() const;
 
+    void toggle_marked_profile(std::uint32_t profile_id);
+    void clear_marked_profiles();
+    bool is_profile_marked(std::uint32_t profile_id) const;
+    const std::unordered_set<std::uint32_t>& marked_profiles() const;
+    void remove_marked_profiles();
+    void mark_all_profiles();
+    void mark_profile_neighbor(bool up);
+
   private:
     std::optional<Profile> active_;
 
     std::vector<ProfileInfo> profile_list_;
     std::uint32_t active_profile_id_{0};
     std::uint32_t next_profile_id_{1};
+    std::uint32_t last_clicked_id_{0};
+
+    std::unordered_set<std::uint32_t> marked_profile_ids_;
 };
